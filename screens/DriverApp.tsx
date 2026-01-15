@@ -34,7 +34,7 @@ export const DriverApp = () => {
   const [showProfile, setShowProfile] = useState(false);
   const [showPerformance, setShowPerformance] = useState(false);
   const [performanceTab, setPerformanceTab] = useState<'stats' | 'support'>('stats');
-  const [supportForm, setSupportForm] = useState({ title: '', description: '', urgency: 'medium' as any });
+  const [supportForm, setSupportForm] = useState({ title: '', description: '', urgency: 'medium' as any, rideId: '' as string | undefined });
   const [darkMode, setDarkMode] = useState(true);
   const [verificationCode, setVerificationCode] = useState('');
 
@@ -361,7 +361,7 @@ export const DriverApp = () => {
         attachments: ticketAttachments
       });
       alert('Solicitação enviada com sucesso! Nossa equipe entrará em contato.');
-      setSupportForm({ title: '', description: '', urgency: 'medium' });
+      setSupportForm({ title: '', description: '', urgency: 'medium', rideId: undefined });
       setTicketAttachments([]);
       setSelectedRideId(null);
       setShowPerformance(false); // Closes the modal
@@ -435,8 +435,10 @@ export const DriverApp = () => {
       <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} p-3 flex justify-between items-center shadow-lg z-20 border-b transition-colors`}>
         <div className="flex items-center gap-2 cursor-pointer p-1 rounded-lg hover:bg-black/10 transition" onClick={() => setShowPerformance(true)}>
           <img src={currentDriver.avatar} className="w-9 h-9 rounded-full border border-gray-600" alt="Avatar" />
-          <div>
-            <h3 className={`font-bold text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>{currentDriver.name}</h3>
+          <div className="min-w-0 flex-1">
+            <h3 className={`font-bold text-sm truncate max-w-[120px] ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+              {currentDriver.name.split(' ').slice(0, 2).join(' ')}
+            </h3>
             <div className="flex items-center gap-2 text-xs text-gray-400">
               <span className="bg-orange-500 px-1.5 rounded text-white font-bold flex items-center gap-0.5">
                 {currentDriver.rating.toFixed(1)} <Star size={10} fill="white" />
@@ -772,6 +774,26 @@ export const DriverApp = () => {
                       placeholder="Ex: Problema com pagamento"
                     />
                   </div>
+
+                  {/* Recent Rides Selector */}
+                  {historyRides.length > 0 && (
+                    <div>
+                      <label className="block text-sm font-medium mb-1 opacity-80">Corrida Relacionada (Opcional)</label>
+                      <select
+                        className={`w-full p-3 rounded-xl border ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'} outline-none focus:ring-2 focus:ring-blue-500`}
+                        value={supportForm.rideId || ''}
+                        onChange={(e) => setSupportForm({ ...supportForm, rideId: e.target.value || undefined })}
+                      >
+                        <option value="">Nenhuma corrida específica</option>
+                        {historyRides.slice(0, 10).map((ride) => (
+                          <option key={ride.id} value={ride.id}>
+                            {new Date(ride.createdAt).toLocaleDateString('pt-BR')} - {typeof ride.destination === 'string' ? ride.destination.slice(0, 30) : 'Corrida'} - R$ {ride.price.toFixed(2)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
                   <div>
                     <label className="block text-sm font-medium mb-1 opacity-80">Prioridade</label>
                     <select
@@ -839,7 +861,7 @@ export const DriverApp = () => {
             </div>
 
             <div className="p-4 border-t border-gray-700/50 bg-opacity-50">
-              <Button fullWidth onClick={() => setShowProfile(true)} variant="outline">
+              <Button fullWidth onClick={() => setShowProfile(true)} className="border border-gray-500 bg-gray-700 hover:bg-gray-600 !text-white">
                 <Settings size={16} className="mr-2" /> Editar Perfil
               </Button>
             </div>
