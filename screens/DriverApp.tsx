@@ -442,13 +442,16 @@ export const DriverApp = () => {
                 {currentDriver.rating.toFixed(1)} <Star size={10} fill="white" />
               </span>
               {/* GPS Status Dot */}
-              <span
-                className={`w-2 h-2 rounded-full ${gpsError ? 'bg-red-500' :
-                  gpsAccuracy ? (gpsAccuracy < 30 ? 'bg-green-500' : 'bg-orange-500') :
-                    'bg-gray-400 animate-pulse'
-                  }`}
-                title={gpsError ? 'GPS Offline' : gpsAccuracy ? (gpsAccuracy < 30 ? 'GPS OK' : 'GPS Instável') : 'Localizando...'}
-              />
+              <span className="flex items-center gap-1">
+                <span
+                  className={`w-2 h-2 rounded-full ${gpsError ? 'bg-red-500' :
+                    gpsAccuracy ? (gpsAccuracy < 30 ? 'bg-green-500' : 'bg-orange-500') :
+                      'bg-gray-400 animate-pulse'
+                    }`}
+                  title={gpsError ? 'GPS Offline' : gpsAccuracy ? (gpsAccuracy < 30 ? 'GPS OK' : 'GPS Instável') : 'Localizando...'}
+                />
+                <span className={`text-[10px] font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>GPS</span>
+              </span>
             </div>
           </div>
         </div>
