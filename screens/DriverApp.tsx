@@ -14,6 +14,7 @@ import { RideRequest, Driver, Coords } from '../types';
 import { playSound, initAudio } from '../services/audio';
 import { useGeoLocation } from '../hooks/useGeoLocation';
 import { showNotification, ensureNotificationPermission } from '../services/notifications';
+import { db, isMockMode } from '../services/firebase';
 
 export const DriverApp = () => {
   const { user: authUser } = useAuth();
@@ -459,6 +460,9 @@ export const DriverApp = () => {
                     title={gpsError ? 'GPS Offline' : gpsAccuracy ? (gpsAccuracy < 30 ? 'GPS OK' : 'GPS Instável') : 'Localizando...'}
                   />
                   <span className={`text-[10px] font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>GPS</span>
+                </span>
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${isMockMode || !db ? 'bg-yellow-500 text-black' : 'bg-blue-500 text-white'}`} title={isMockMode ? 'Variáveis de ambiente ausentes' : !db ? 'Falha na conexão DB' : 'Conectado ao Firebase'}>
+                  {isMockMode ? 'DEMO-ENV' : !db ? 'DEMO-DB' : 'LIVE'}
                 </span>
               </div>
             </div>
