@@ -13,7 +13,7 @@ import { fetchDashboardData, DashboardData } from '../services/admin';
 import { updateUserProfile } from '../services/user';
 import { getAllCompanies, saveCompany } from '../services/company';
 import { subscribeToTickets, SupportTicket } from '../services/support';
-import { db } from '../services/firebase';
+import { db, isMockMode } from '../services/firebase';
 import { playSound } from '../services/audio';
 import { CompanyDashboard } from './CompanyDashboard';
 import { SimulatedMap } from '../components/SimulatedMap';
@@ -2020,102 +2020,108 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
             )}
 
             {/* Notifications Bell */}
-            <div className="relative">
-              <button
-                onClick={() => setShowNotifications(!showNotifications)}
-                className="relative p-2 text-gray-500 hover:bg-gray-100 rounded-full"
-              >
-                <Bell size={20} />
-                {notifications.filter(n => !n.read).length > 0 && (
-                  <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 rounded-full text-white text-[10px] flex items-center justify-center font-bold">
-                    {notifications.filter(n => !n.read).length}
-                  </span>
-                )}
-              </button>
+            <div className="flex items-center gap-3">
+              <span className={`px-2 py-1 rounded text-xs font-bold ${isMockMode || !db ? 'bg-yellow-500 text-black' : 'bg-blue-500 text-white'}`} title={isMockMode ? 'Variáveis de ambiente ausentes' : !db ? 'Falha na conexão DB' : 'Conectado ao Firebase'}>
+                {isMockMode ? 'DEMO-ENV' : !db ? 'DEMO-DB' : 'LIVE'}
+              </span>
+              <div className="relative">
+                <button
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  className="relative p-2 text-gray-500 hover:bg-gray-100 rounded-full"
+                >
+                  <Bell size={20} />
+                  {notifications.filter(n => !n.read).length > 0 && (
+                    <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 rounded-full text-white text-[10px] flex items-center justify-center font-bold">
+                      {notifications.filter(n => !n.read).length}
+                    </span>
+                  )}
+                </button>
 
-              {/* Notification Dropdown */}
-              {showNotifications && (
-                <>
-                  {/* Backdrop to close on click outside */}
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setShowNotifications(false)}
-                  />
-                  <div className="absolute right-0 top-12 w-96 bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden z-50 animate-slide-up">
-                    <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                      <h3 className="font-bold text-gray-900">Notificações</h3>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setNotifications(notifications.map(n => ({ ...n, read: true }))); }}
-                        className="text-xs text-orange-600 hover:underline"
-                      >
-                        Marcar todas como lidas
-                      </button>
-                    </div>
-                    <div className="max-h-96 overflow-y-auto divide-y divide-gray-100">
-                      {notifications.map(notif => (
-                        <div
-                          key={notif.id}
-                          className={`p-4 hover:bg-gray-50 transition cursor-pointer ${!notif.read ? 'bg-orange-50/50' : ''}`}
-                          onClick={() => {
-                            // Mark as read
-                            setNotifications(notifications.map(n => n.id === notif.id ? { ...n, read: true } : n));
-                            // Close dropdown
-                            setShowNotifications(false);
-                            // Navigate to appropriate tab based on type
-                            if (notif.type === 'new_driver') {
-                              setActiveTab('drivers');
-                              setFilterStatus('pending');
-                            } else if (notif.type === 'ride_issue' || notif.type === 'payment' || notif.type === 'feedback') {
-                              setActiveTab('occurrences');
-                            } else if (notif.type === 'system') {
-                              setActiveTab('settings');
-                            }
-                          }}
+
+                {/* Notification Dropdown */}
+                {showNotifications && (
+                  <>
+                    {/* Backdrop to close on click outside */}
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setShowNotifications(false)}
+                    />
+                    <div className="absolute right-0 top-12 w-96 bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden z-50 animate-slide-up">
+                      <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                        <h3 className="font-bold text-gray-900">Notificações</h3>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setNotifications(notifications.map(n => ({ ...n, read: true }))); }}
+                          className="text-xs text-orange-600 hover:underline"
                         >
-                          <div className="flex gap-3">
-                            <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${notif.type === 'new_driver' ? 'bg-blue-100 text-blue-600' :
-                              notif.type === 'ride_issue' ? 'bg-red-100 text-red-600' :
-                                notif.type === 'payment' ? 'bg-green-100 text-green-600' :
-                                  notif.type === 'feedback' ? 'bg-yellow-100 text-yellow-600' :
-                                    'bg-gray-100 text-gray-600'
-                              }`}>
-                              {notif.type === 'new_driver' && <Users size={18} />}
-                              {notif.type === 'ride_issue' && <AlertTriangle size={18} />}
-                              {notif.type === 'payment' && <DollarSign size={18} />}
-                              {notif.type === 'feedback' && <Star size={18} />}
-                              {notif.type === 'system' && <Settings size={18} />}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-start justify-between gap-2">
-                                <p className={`text-sm ${!notif.read ? 'font-bold text-gray-900' : 'text-gray-700'}`}>{notif.title}</p>
-                                <div className="flex items-center gap-1">
-                                  {!notif.read && <span className="w-2 h-2 bg-orange-500 rounded-full flex-shrink-0"></span>}
-                                  <button onClick={(e) => deleteNotification(e, notif.id)} className="text-gray-400 hover:text-red-500 p-1"><Trash2 size={12} /></button>
-                                </div>
+                          Marcar todas como lidas
+                        </button>
+                      </div>
+                      <div className="max-h-96 overflow-y-auto divide-y divide-gray-100">
+                        {notifications.map(notif => (
+                          <div
+                            key={notif.id}
+                            className={`p-4 hover:bg-gray-50 transition cursor-pointer ${!notif.read ? 'bg-orange-50/50' : ''}`}
+                            onClick={() => {
+                              // Mark as read
+                              setNotifications(notifications.map(n => n.id === notif.id ? { ...n, read: true } : n));
+                              // Close dropdown
+                              setShowNotifications(false);
+                              // Navigate to appropriate tab based on type
+                              if (notif.type === 'new_driver') {
+                                setActiveTab('drivers');
+                                setFilterStatus('pending');
+                              } else if (notif.type === 'ride_issue' || notif.type === 'payment' || notif.type === 'feedback') {
+                                setActiveTab('occurrences');
+                              } else if (notif.type === 'system') {
+                                setActiveTab('settings');
+                              }
+                            }}
+                          >
+                            <div className="flex gap-3">
+                              <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${notif.type === 'new_driver' ? 'bg-blue-100 text-blue-600' :
+                                notif.type === 'ride_issue' ? 'bg-red-100 text-red-600' :
+                                  notif.type === 'payment' ? 'bg-green-100 text-green-600' :
+                                    notif.type === 'feedback' ? 'bg-yellow-100 text-yellow-600' :
+                                      'bg-gray-100 text-gray-600'
+                                }`}>
+                                {notif.type === 'new_driver' && <Users size={18} />}
+                                {notif.type === 'ride_issue' && <AlertTriangle size={18} />}
+                                {notif.type === 'payment' && <DollarSign size={18} />}
+                                {notif.type === 'feedback' && <Star size={18} />}
+                                {notif.type === 'system' && <Settings size={18} />}
                               </div>
-                              <p className="text-xs text-gray-500 mt-0.5 truncate">{notif.message}</p>
-                              <p className="text-[10px] text-gray-400 mt-1">
-                                {Math.floor((Date.now() - notif.time.getTime()) / 60000) < 60
-                                  ? `${Math.floor((Date.now() - notif.time.getTime()) / 60000)} min atrás`
-                                  : `${Math.floor((Date.now() - notif.time.getTime()) / 3600000)} h atrás`
-                                }
-                              </p>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-start justify-between gap-2">
+                                  <p className={`text-sm ${!notif.read ? 'font-bold text-gray-900' : 'text-gray-700'}`}>{notif.title}</p>
+                                  <div className="flex items-center gap-1">
+                                    {!notif.read && <span className="w-2 h-2 bg-orange-500 rounded-full flex-shrink-0"></span>}
+                                    <button onClick={(e) => deleteNotification(e, notif.id)} className="text-gray-400 hover:text-red-500 p-1"><Trash2 size={12} /></button>
+                                  </div>
+                                </div>
+                                <p className="text-xs text-gray-500 mt-0.5 truncate">{notif.message}</p>
+                                <p className="text-[10px] text-gray-400 mt-1">
+                                  {Math.floor((Date.now() - notif.time.getTime()) / 60000) < 60
+                                    ? `${Math.floor((Date.now() - notif.time.getTime()) / 60000)} min atrás`
+                                    : `${Math.floor((Date.now() - notif.time.getTime()) / 3600000)} h atrás`
+                                  }
+                                </p>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
+                      <div className="p-3 border-t border-gray-100 bg-gray-50">
+                        <button
+                          onClick={() => { setShowNotifications(false); setActiveTab('occurrences'); }}
+                          className="w-full text-center text-sm text-orange-600 hover:underline font-medium"
+                        >
+                          Ver todas as notificações
+                        </button>
+                      </div>
                     </div>
-                    <div className="p-3 border-t border-gray-100 bg-gray-50">
-                      <button
-                        onClick={() => { setShowNotifications(false); setActiveTab('occurrences'); }}
-                        className="w-full text-center text-sm text-orange-600 hover:underline font-medium"
-                      >
-                        Ver todas as notificações
-                      </button>
-                    </div>
-                  </div>
-                </>
-              )}
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </div>
