@@ -126,6 +126,11 @@ export const updateUserProfile = async (uid: string, data: Partial<User | Driver
       const parsed = JSON.parse(stored);
       const updated = { ...parsed, ...data };
       localStorage.setItem(storageKey, JSON.stringify(updated));
+      console.log('✅ Driver status updated:', updated.status, updated.location);
+    } else {
+      // Create new entry if doesn't exist
+      localStorage.setItem(storageKey, JSON.stringify({ id: uid, ...data }));
+      console.log('✅ Driver entry created:', uid);
     }
     return;
   }

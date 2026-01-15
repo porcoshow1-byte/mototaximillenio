@@ -987,7 +987,8 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 30000);
+    // Faster refresh (5 seconds) for real-time feel on Live Map
+    const interval = setInterval(loadData, 5000);
     return () => clearInterval(interval);
   }, []);
 
