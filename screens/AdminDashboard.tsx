@@ -797,6 +797,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
   const [viewDriver, setViewDriver] = useState<Driver | null>(null);
   const [viewUser, setViewUser] = useState<User | null>(null);
   const [showAddDriver, setShowAddDriver] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [showDriverPanel, setShowDriverPanel] = useState(true);
   const [chatDriver, setChatDriver] = useState<Driver | null>(null);
   const [chatMessage, setChatMessage] = useState('');
@@ -1929,8 +1930,17 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
               <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
               <input className="pl-10 pr-4 py-2 bg-gray-50 border-none rounded-lg text-sm w-64 focus:ring-2 focus:ring-orange-500 outline-none" placeholder="Buscar..." />
             </div>
-            <button onClick={loadData} className="p-2 text-gray-500 hover:bg-gray-100 rounded-full" title="Atualizar dados">
-              <RefreshCcw size={20} />
+            <button
+              onClick={() => {
+                setIsRefreshing(true);
+                loadData();
+                setTimeout(() => setIsRefreshing(false), 2000);
+              }}
+              className="p-2 text-gray-500 hover:bg-gray-100 rounded-full"
+              title="Atualizar dados"
+              disabled={isRefreshing}
+            >
+              <RefreshCcw size={20} className={isRefreshing ? 'animate-spin text-orange-500' : ''} />
             </button>
 
             {/* --- COMPANIES TAB CONTENT --- */}
