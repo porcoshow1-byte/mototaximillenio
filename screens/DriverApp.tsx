@@ -437,23 +437,18 @@ export const DriverApp = () => {
           <img src={currentDriver.avatar} className="w-10 h-10 rounded-full border border-gray-600" alt="Avatar" />
           <div>
             <h3 className={`font-bold text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>{currentDriver.name}</h3>
-            <div className="flex flex-col gap-0.5">
-              <div className="flex items-center gap-1 text-xs text-gray-400">
-                <span className="bg-orange-500 px-1.5 rounded text-white font-bold flex items-center gap-0.5">
-                  {currentDriver.rating.toFixed(1)} <Star size={10} fill="white" />
-                </span>
-                <span className="text-[10px] ml-1">{currentDriver.vehicle}</span>
-              </div>
-              {/* GPS Indicator */}
-              <div className="text-[10px]">
-                {gpsError ? (
-                  <span className="text-red-500 font-bold flex items-center gap-1">❌ Sem GPS</span>
-                ) : (
-                  <span className={`flex items-center gap-1 ${gpsAccuracy ? (gpsAccuracy < 30 ? 'text-green-500' : 'text-yellow-500') : 'text-gray-400'}`}>
-                    {gpsAccuracy ? (gpsAccuracy < 30 ? '● GPS Preciso' : '● GPS Impreciso') : '○ Buscando...'}
-                  </span>
-                )}
-              </div>
+            <div className="flex items-center gap-2 text-xs text-gray-400">
+              <span className="bg-orange-500 px-1.5 rounded text-white font-bold flex items-center gap-0.5">
+                {currentDriver.rating.toFixed(1)} <Star size={10} fill="white" />
+              </span>
+              {/* GPS Status Dot */}
+              <span
+                className={`w-2 h-2 rounded-full ${gpsError ? 'bg-red-500' :
+                    gpsAccuracy ? (gpsAccuracy < 30 ? 'bg-green-500' : 'bg-orange-500') :
+                      'bg-gray-400 animate-pulse'
+                  }`}
+                title={gpsError ? 'GPS Offline' : gpsAccuracy ? (gpsAccuracy < 30 ? 'GPS OK' : 'GPS Instável') : 'Localizando...'}
+              />
             </div>
           </div>
         </div>
