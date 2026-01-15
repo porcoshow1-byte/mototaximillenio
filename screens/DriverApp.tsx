@@ -802,7 +802,35 @@ export const DriverApp = () => {
                   <div>
                     <label className="block text-sm font-medium mb-1 opacity-80">Anexos (Opcional - Máx 3)</label>
                     <div className="flex flex-wrap gap-2">
-                      {/* Attachments rendering logic which is already there */}
+                      {ticketAttachments.map((url, idx) => (
+                        <div key={idx} className="relative w-16 h-16 rounded-lg overflow-hidden border border-gray-500/30 group">
+                          <img src={url} alt="Attachment" className="w-full h-full object-cover" />
+                          <button
+                            onClick={() => setTicketAttachments(prev => prev.filter((_, i) => i !== idx))}
+                            className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition text-white"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      ))}
+
+                      {ticketAttachments.length < 3 && (
+                        <button
+                          onClick={() => {
+                            setIsUploading(true);
+                            // Simulate upload
+                            setTimeout(() => {
+                              const mockUrl = `https://picsum.photos/200?random=${Date.now()}`;
+                              setTicketAttachments(prev => [...prev, mockUrl]);
+                              setIsUploading(false);
+                            }, 1500);
+                          }}
+                          disabled={isUploading}
+                          className={`w-16 h-16 rounded-lg border-2 border-dashed flex items-center justify-center transition ${darkMode ? 'border-gray-600 hover:border-gray-400' : 'border-gray-300 hover:border-gray-400'}`}
+                        >
+                          {isUploading ? <Loader2 size={20} className="animate-spin text-gray-400" /> : <ImageIcon size={20} className="text-gray-400" />}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
