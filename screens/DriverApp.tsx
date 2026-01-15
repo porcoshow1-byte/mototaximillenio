@@ -39,8 +39,7 @@ export const DriverApp = () => {
   const [verificationCode, setVerificationCode] = useState('');
 
   // Support UI State
-  const [supportRecentRides, setSupportRecentRides] = useState<RideRequest[]>([]);
-  const [selectedRideId, setSelectedRideId] = useState<string | null>(null);
+
   const [ticketAttachments, setTicketAttachments] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
 
@@ -170,7 +169,7 @@ export const DriverApp = () => {
     if (showPerformance && performanceTab === 'support' && currentDriver) {
       const fetchRecent = async () => {
         const rides = await getRideHistory(currentDriver.id, 'driver');
-        setSupportRecentRides(rides.slice(0, 5));
+        setHistoryRides(rides);
       };
       fetchRecent();
     }
@@ -348,12 +347,12 @@ export const DriverApp = () => {
         userId: currentDriver.id,
         userName: currentDriver.name,
         userRole: 'driver',
-        rideDetails: selectedRideId ? (() => {
-          const r = supportRecentRides.find(r => r.id === selectedRideId);
+        rideDetails: supportForm.rideId ? (() => {
+          const r = historyRides.find(r => r.id === supportForm.rideId);
           return r ? {
             rideId: r.id,
-            origin: r.origin,
-            destination: r.destination,
+            origin: typeof r.origin === 'string' ? r.origin : 'Local definido',
+            destination: typeof r.destination === 'string' ? r.destination : 'Destino definido',
             date: r.createdAt,
             price: r.price
           } : undefined;
@@ -363,7 +362,7 @@ export const DriverApp = () => {
       alert('Solicitação enviada com sucesso! Nossa equipe entrará em contato.');
       setSupportForm({ title: '', description: '', urgency: 'medium', rideId: undefined });
       setTicketAttachments([]);
-      setSelectedRideId(null);
+
       setShowPerformance(false); // Closes the modal
     } catch (error) {
       console.error(error);
@@ -736,35 +735,7 @@ export const DriverApp = () => {
                     <p className="text-sm opacity-80">Precisa de ajuda ou quer reportar um problema? Preencha o formulário abaixo que nossa equipe entrará em contato.</p>
                   </div>
 
-                  {/* Recent Rides Selection */}
-                  {supportRecentRides.length > 0 && (
-                    <div>
-                      <label className="block text-sm font-medium mb-2 opacity-80">Referente a uma corrida recente? (Opcional)</label>
-                      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                        {supportRecentRides.map(ride => (
-                          <button
-                            key={ride.id}
-                            onClick={() => setSelectedRideId(selectedRideId === ride.id ? null : ride.id)}
-                            className={`flex-shrink-0 w-40 p-3 rounded-xl border text-left transition relative ${selectedRideId === ride.id
-                              ? 'border-blue-500 bg-blue-500/10 ring-1 ring-blue-500'
-                              : `${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-gray-50'}`
-                              }`}
-                          >
-                            {selectedRideId === ride.id && (
-                              <div className="absolute -top-2 -right-2 bg-blue-500 text-white rounded-full p-0.5">
-                                <CheckCircle size={12} />
-                              </div>
-                            )}
-                            <p className="text-[10px] opacity-60 mb-1">
-                              {new Date(ride.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} • {new Date(ride.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                            </p>
-                            <p className="font-bold text-xs truncate max-w-full mb-0.5">{ride.destination}</p>
-                            <p className="text-xs text-green-500 font-bold">R$ {ride.price.toFixed(2)}</p>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+
 
                   <div>
                     <label className="block text-sm font-medium mb-1 opacity-80">Assunto</label>
@@ -860,11 +831,7 @@ export const DriverApp = () => {
               )}
             </div>
 
-            <div className="p-4 border-t border-gray-700/50 bg-opacity-50">
-              <Button fullWidth onClick={() => setShowProfile(true)} className="border border-gray-500 bg-gray-700 hover:bg-gray-600 !text-white">
-                <Settings size={16} className="mr-2" /> Editar Perfil
-              </Button>
-            </div>
+
           </div>
         </div>
       )}
