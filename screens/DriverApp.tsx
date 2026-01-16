@@ -402,7 +402,14 @@ export const DriverApp = () => {
 
   if (currentDriver && (vStatus === 'pending' || vStatus === 'rejected')) {
     return (
-      <div className="h-full bg-gray-900 flex flex-col items-center justify-center text-white p-6 text-center">
+      <div className="h-full bg-gray-900 flex flex-col items-center justify-center text-white p-6 text-center relative">
+        {/* Connection Status Badge */}
+        <div className="absolute top-4 right-4">
+          <span className={`px-3 py-1 rounded-full text-xs font-bold ${isMockMode || !db ? 'bg-yellow-500 text-black' : 'bg-blue-500 text-white'}`}>
+            {isMockMode ? 'DEMO-ENV' : !db ? 'DEMO-DB' : 'LIVE'}
+          </span>
+        </div>
+
         <Shield className={vStatus === 'pending' ? "text-orange-500 mb-4" : "text-red-500 mb-4"} size={64} />
         <h2 className="text-2xl font-bold mb-2">
           {vStatus === 'pending' ? 'Cadastro em Análise' : 'Cadastro Recusado'}
