@@ -417,7 +417,17 @@ export const DriverApp = () => {
         <p className="text-gray-400 mb-6 max-w-xs mx-auto">
           {vStatus === 'pending'
             ? 'Sua documentação (CNH) foi enviada e está sendo analisada por nossa equipe. Aguarde a aprovação para entrar online.'
-            : 'Infelizmente seu cadastro não foi aprovado. Entre em contato com o suporte para mais detalhes.'
+            : (
+              <>
+                Infelizmente seu cadastro não foi aprovado.
+                {currentDriver?.rejectionReason && (
+                  <span className="block mt-4 mb-2 text-white bg-red-600/20 border border-red-500/50 p-3 rounded-lg text-sm font-medium">
+                    Motivo: {currentDriver.rejectionReason}
+                  </span>
+                )}
+                <span className="block mt-2">Entre em contato com o suporte para mais detalhes.</span>
+              </>
+            )
           }
         </p>
         <Button onClick={loadDriverProfile} className="flex items-center gap-2">

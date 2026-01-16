@@ -50,12 +50,23 @@ const DriverDetailModal = ({ driver, onClose }: { driver: Driver, onClose: () =>
   const [loading, setLoading] = useState(false);
 
   const handleAction = async (action: 'approve' | 'block') => {
-    if (!confirm(`Tem certeza que deseja ${action === 'approve' ? 'APROVAR' : 'BLOQUEAR'} este motorista?`)) return;
+    let rejectionReason = '';
+
+    // If we are rejecting a PENDING driver (block action on pending status)
+    if (action === 'block' && driver.verificationStatus === 'pending') {
+      const reason = prompt("Motivo da Rejeição (Obrigatório):");
+      if (!reason) return; // Cancel if empty
+      rejectionReason = reason;
+    } else if (!confirm(`Tem certeza que deseja ${action === 'approve' ? 'APROVAR' : 'BLOQUEAR'} este motorista?`)) {
+      return;
+    }
+
     setLoading(true);
     try {
       await updateUserProfile(driver.id, {
         verificationStatus: action === 'approve' ? 'approved' : 'rejected',
-        status: action === 'approve' ? 'offline' : 'offline' // If blocked, force offline
+        status: action === 'approve' ? 'offline' : 'offline', // If blocked, force offline
+        rejectionReason: rejectionReason || undefined
       });
       onClose();
       window.location.reload(); // Simple reload to refresh data

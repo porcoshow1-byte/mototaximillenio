@@ -63,6 +63,7 @@ export interface Driver {
   phone: string;
   verificationStatus?: 'pending' | 'approved' | 'rejected';
   cnhUrl?: string;
+  rejectionReason?: string;
 }
 
 export interface RideRequest {
