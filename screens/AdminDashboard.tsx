@@ -393,11 +393,11 @@ const AddDriverModal = ({ onClose }: { onClose: () => void }) => {
           <div className="pt-4 border-t border-gray-100">
             <label className="block text-sm font-medium text-gray-700 mb-2">Ou compartilhe o link de cadastro</label>
             <div className="bg-gray-100 p-3 rounded-lg flex items-center justify-between font-mono text-xs text-gray-600">
-              <span>https://motoja.app/cadastro-motorista</span>
+              <span>{window.location.origin}/cadastro-motorista</span>
               <button
                 className="text-orange-600 font-bold hover:underline"
                 onClick={() => {
-                  navigator.clipboard.writeText('https://motoja.app/cadastro-motorista');
+                  navigator.clipboard.writeText(`${window.location.origin}/cadastro-motorista`);
                   alert('Link copiado!');
                 }}
               >
