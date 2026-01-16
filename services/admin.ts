@@ -14,6 +14,7 @@ export interface DashboardData {
   drivers: Driver[];
   passengers: User[];
   recentRides: RideRequest[];
+  error?: string;
 }
 
 export const fetchDashboardData = async (): Promise<DashboardData> => {
@@ -41,9 +42,9 @@ export const fetchDashboardData = async (): Promise<DashboardData> => {
     ];
 
     const mockPassengers: User[] = [
-      { id: 'u1', name: 'João Silva', phone: '(11) 91234-5678', rating: 4.8, avatar: '', walletBalance: 25.50, isBlocked: false, email: 'joao.silva@email.com', address: 'Rua das Flores, 123 - Centro' },
-      { id: 'u2', name: 'Maria Oliveira', phone: '(11) 98765-4321', rating: 4.9, avatar: '', walletBalance: 0, isBlocked: false, email: 'maria.oli@email.com', address: 'Av. Paulista, 1000 - Bela Vista' },
-      { id: 'u3', name: 'Pedro Santos', phone: '(11) 95555-4444', rating: 4.5, avatar: '', walletBalance: 100.00, isBlocked: true, email: 'pedro.santos@email.com', address: 'Rua Augusta, 500 - Consolação' }
+      { id: 'u1', name: 'João Silva', phone: '(11) 91234-5678', rating: 4.8, avatar: '', walletBalance: 25.50, isBlocked: false, email: 'joao.silva@email.com', address: 'Rua das Flores, 123 - Centro', totalRides: 15, type: 'passenger' },
+      { id: 'u2', name: 'Maria Oliveira', phone: '(11) 98765-4321', rating: 4.9, avatar: '', walletBalance: 0, isBlocked: false, email: 'maria.oli@email.com', address: 'Av. Paulista, 1000 - Bela Vista', totalRides: 8, type: 'passenger' },
+      { id: 'u3', name: 'Pedro Santos', phone: '(11) 95555-4444', rating: 4.5, avatar: '', walletBalance: 100.00, isBlocked: true, email: 'pedro.santos@email.com', address: 'Rua Augusta, 500 - Consolação', totalRides: 5, type: 'passenger' }
     ];
 
     const mockRides: any[] = JSON.parse(localStorage.getItem('motoja_mock_rides') || '[]')
@@ -79,13 +80,17 @@ export const fetchDashboardData = async (): Promise<DashboardData> => {
     let drivers: Driver[] = [];
     let passengers: User[] = [];
     let rides: RideRequest[] = [];
+    let fetchError = '';
 
     // 1. Fetch Drivers
     try {
       const driversQuery = query(collection(db, 'users'), where('role', '==', 'driver'));
       const driversSnap = await getDocs(driversQuery);
       drivers = driversSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Driver));
-    } catch (e) { console.warn("Erro ao buscar motoristas:", e); }
+    } catch (e: any) {
+      console.warn("Erro ao buscar motoristas:", e);
+      fetchError = `Erro Drivers: ${e.message}`;
+    }
 
     // 1.1 Fetch Passengers
     try {

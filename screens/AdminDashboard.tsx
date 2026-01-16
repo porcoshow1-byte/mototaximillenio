@@ -2128,6 +2128,16 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
 
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
+          {dashboardData?.error && (
+            <div className="mb-6 bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded shadow-sm flex items-start animate-fade-in">
+              <AlertTriangle className="mr-3 shrink-0" />
+              <div>
+                <p className="font-bold">Erro de Conexão com Banco de Dados</p>
+                <p>{dashboardData.error}</p>
+                <p className="text-sm mt-1">Verifique as "Regras de Segurança" (Security Rules) do Firestore no console do Firebase.</p>
+              </div>
+            </div>
+          )}
           {!dashboardData && !loading ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-400 animate-fade-in">
               <AlertTriangle size={64} className="mb-4 text-orange-200" />
