@@ -100,7 +100,7 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
 
       // File Uploads
       let cnhUrl = '';
-      if (!isLogin && role === 'driver' && cnhFile && storage) {
+      if (!isLogin && (role === 'driver' || role === 'driver-register') && cnhFile && storage) {
         try {
           const storageRef = ref(storage, `drivers/${uid || Date.now()}_cnh.jpg`);
           await uploadBytes(storageRef, cnhFile);
@@ -146,7 +146,7 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
           await getOrCreateUserProfile(
             userCredential.user.uid,
             userCredential.user.email || '',
-            role as 'user' | 'driver',
+            role === 'driver-register' ? 'driver' : (role as 'user' | 'driver'),
             !isLogin ? { name, phone, vehicle, plate, cnhUrl } : undefined
           );
         }
