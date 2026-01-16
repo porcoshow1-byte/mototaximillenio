@@ -10,6 +10,7 @@ import {
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LineChart, Line, ResponsiveContainer } from 'recharts';
 import { Card, Button, Badge, Input } from '../components/UI';
 import { fetchDashboardData, DashboardData } from '../services/admin';
+
 import { updateUserProfile } from '../services/user';
 import { getAllCompanies, saveCompany } from '../services/company';
 import { subscribeToTickets, SupportTicket } from '../services/support';
@@ -999,6 +1000,18 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
     if (result.success) alert(result.message);
   };
 
+  const debugDB = async () => {
+    if (!db) return alert("Sem conexão DB");
+    try {
+      const q = query(collection(db, 'users'), limit(5));
+      const snap = await getDocs(q);
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      alert(`Encontrados: ${data.length}\nSample: ${JSON.stringify(data, null, 2)}`);
+    } catch (e: any) {
+      alert("Erro Debug: " + e.message);
+    }
+  };
+
   const loadData = async () => {
     setLoading(true);
     try {
@@ -1966,6 +1979,14 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
               disabled={isRefreshing}
             >
               <RefreshCcw size={20} className={isRefreshing ? 'animate-spin text-orange-500' : ''} />
+            </button>
+
+            <button
+              onClick={debugDB}
+              className="p-2 text-red-500 hover:bg-red-50 rounded-full border border-red-200"
+              title="Debug DB (Temp)"
+            >
+              <AlertTriangle size={20} />
             </button>
 
             {/* --- COMPANIES TAB CONTENT --- */}
