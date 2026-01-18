@@ -4443,22 +4443,19 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                         selectedOccurrence.type === 'payment' ? 'Pagamento' :
                           selectedOccurrence.type === 'support_request' ? 'Suporte' : 'Avaliação'}
                     </span>
-                    {selectedOccurrence.protocol && (
-                      <span className="px-2 py-1 bg-white/20 rounded text-xs font-mono">
-                        {selectedOccurrence.protocol}
-                      </span>
-                    )}
-                    {selectedOccurrence.priority && (
-                      <span className={`px-2 py-1 rounded text-xs font-bold ${selectedOccurrence.priority === 'critical' ? 'bg-red-900 text-red-100' :
-                        selectedOccurrence.priority === 'high' ? 'bg-orange-900 text-orange-100' :
-                          selectedOccurrence.priority === 'medium' ? 'bg-yellow-900 text-yellow-100' :
-                            'bg-gray-700 text-gray-100'
-                        }`}>
-                        {selectedOccurrence.priority === 'critical' ? '🔴 CRÍTICA' :
-                          selectedOccurrence.priority === 'high' ? '🟠 ALTA' :
-                            selectedOccurrence.priority === 'medium' ? '🟡 MÉDIA' : '⚪ BAIXA'}
-                      </span>
-                    )}
+                    <span className="bg-white/20 px-2 py-1 rounded text-sm font-mono">
+                      {(selectedOccurrence.protocol || selectedOccurrence.id).substring(0, 11)}
+                    </span>
+                    <span className={`px-2 py-1 rounded text-xs font-bold uppercase border ${selectedOccurrence.priority === 'critical' ? 'bg-red-900/30 border-red-800 text-white' :
+                      selectedOccurrence.priority === 'high' ? 'bg-orange-900 text-orange-100' :
+                        selectedOccurrence.priority === 'medium' ? 'bg-yellow-900 text-yellow-100' :
+                          'bg-gray-700 text-gray-100'
+                      }`}>
+                      {selectedOccurrence.priority === 'critical' ? '🔴 CRÍTICA' :
+                        selectedOccurrence.priority === 'high' ? '🟠 ALTA' :
+                          selectedOccurrence.priority === 'medium' ? '🟡 MÉDIA' : '⚪ BAIXA'}
+                    </span>
+
                   </div>
                   <h2 className="text-2xl font-bold">{selectedOccurrence.title}</h2>
                   <p className="text-white/80 text-sm mt-1">
@@ -4688,7 +4685,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                             </div>
                           </div>
                           <p className="text-xs text-gray-400 mt-1">
-                            {entry.author} • {new Date(entry.timestamp).toLocaleString('pt-BR')}
+                            {entry.author} • {safeDate(entry.timestamp).toLocaleString('pt-BR')}
                           </p>
                         </div>
                       </div>
@@ -4751,18 +4748,22 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                       <input type="file" accept="image/*" className="hidden" onChange={(e) => {
                         if (e.target.files?.[0]) {
                           const file = e.target.files[0];
-                          const newEntry = {
-                            id: `tl-${Date.now()}`,
-                            type: 'attachment' as const,
-                            content: `📷 Imagem anexada: ${file.name}`,
-                            author: 'Admin',
-                            timestamp: new Date(),
-                            attachmentUrl: URL.createObjectURL(file)
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            const newEntry = {
+                              id: `tl-${Date.now()}`,
+                              type: 'attachment' as const,
+                              content: `📷 Imagem anexada: ${file.name}`,
+                              author: 'Admin',
+                              timestamp: new Date(),
+                              attachmentUrl: reader.result as string
+                            };
+                            setOccurrenceTimeline({
+                              ...occurrenceTimeline,
+                              [selectedOccurrence.id]: [...(occurrenceTimeline[selectedOccurrence.id] || []), newEntry]
+                            });
                           };
-                          setOccurrenceTimeline({
-                            ...occurrenceTimeline,
-                            [selectedOccurrence.id]: [...(occurrenceTimeline[selectedOccurrence.id] || []), newEntry]
-                          });
+                          reader.readAsDataURL(file);
                         }
                       }} />
                     </label>
@@ -4771,18 +4772,22 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                       <input type="file" accept=".pdf" className="hidden" onChange={(e) => {
                         if (e.target.files?.[0]) {
                           const file = e.target.files[0];
-                          const newEntry = {
-                            id: `tl-${Date.now()}`,
-                            type: 'attachment' as const,
-                            content: `📄 PDF anexado: ${file.name}`,
-                            author: 'Admin',
-                            timestamp: new Date(),
-                            attachmentUrl: URL.createObjectURL(file)
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            const newEntry = {
+                              id: `tl-${Date.now()}`,
+                              type: 'attachment' as const,
+                              content: `📄 PDF anexado: ${file.name}`,
+                              author: 'Admin',
+                              timestamp: new Date(),
+                              attachmentUrl: reader.result as string
+                            };
+                            setOccurrenceTimeline({
+                              ...occurrenceTimeline,
+                              [selectedOccurrence.id]: [...(occurrenceTimeline[selectedOccurrence.id] || []), newEntry]
+                            });
                           };
-                          setOccurrenceTimeline({
-                            ...occurrenceTimeline,
-                            [selectedOccurrence.id]: [...(occurrenceTimeline[selectedOccurrence.id] || []), newEntry]
-                          });
+                          reader.readAsDataURL(file);
                         }
                       }} />
                     </label>
@@ -4791,18 +4796,22 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                       <input type="file" accept="audio/*" className="hidden" onChange={(e) => {
                         if (e.target.files?.[0]) {
                           const file = e.target.files[0];
-                          const newEntry = {
-                            id: `tl-${Date.now()}`,
-                            type: 'attachment' as const,
-                            content: `🎵 Áudio anexado: ${file.name}`,
-                            author: 'Admin',
-                            timestamp: new Date(),
-                            attachmentUrl: URL.createObjectURL(file)
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            const newEntry = {
+                              id: `tl-${Date.now()}`,
+                              type: 'attachment' as const,
+                              content: `🎵 Áudio anexado: ${file.name}`,
+                              author: 'Admin',
+                              timestamp: new Date(),
+                              attachmentUrl: reader.result as string
+                            };
+                            setOccurrenceTimeline({
+                              ...occurrenceTimeline,
+                              [selectedOccurrence.id]: [...(occurrenceTimeline[selectedOccurrence.id] || []), newEntry]
+                            });
                           };
-                          setOccurrenceTimeline({
-                            ...occurrenceTimeline,
-                            [selectedOccurrence.id]: [...(occurrenceTimeline[selectedOccurrence.id] || []), newEntry]
-                          });
+                          reader.readAsDataURL(file);
                         }
                       }} />
                     </label>
@@ -4872,4 +4881,13 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
       <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="12" x2="12" y1="2" y2="22" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
     )
   }
+};
+
+const safeDate = (date: any): Date => {
+  if (!date) return new Date();
+  if (date instanceof Date) return date;
+  if (typeof date.toDate === 'function') return date.toDate(); // Firestore Timestamp
+  if (typeof date === 'string') return new Date(date);
+  if (typeof date === 'number') return new Date(date);
+  return new Date();
 };
