@@ -2006,7 +2006,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                   disabled={!newOccurrence.selectedPassengerId}
                 >
                   <option value="">
-                    {newOccurrence.selectedPassengerId ? '▼ Selecione uma das últimas 5 viagens' : '-- Selecione um passageiro primeiro --'}
+                    {newOccurrence.selectedPassengerId ? 'Selecione (Opcional)' : '-- Selecione um passageiro primeiro --'}
                   </option>
                   {newOccurrence.selectedPassengerId && (
                     <>
@@ -2073,8 +2073,8 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                       read: false,
                       protocol,
                       priority: newOccurrence.priority,
-                      rideId: newOccurrence.selectedRideId || undefined,
-                      passengerId: newOccurrence.selectedPassengerId || undefined,
+                      ...(newOccurrence.selectedRideId ? { rideId: newOccurrence.selectedRideId } : {}),
+                      ...(newOccurrence.selectedPassengerId ? { passengerId: newOccurrence.selectedPassengerId } : {}),
                       status: 'pending' as const
                     };
 
@@ -3014,10 +3014,15 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                               </div>
                               <div className="flex gap-2 flex-shrink-0">
                                 <button
-                                  onClick={() => setNotifications(notifications.map(n => n.id === occurrence.id ? { ...n, read: true } : n))}
-                                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition ${occurrence.read ? 'bg-green-100 text-green-700' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'}`}
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    const newStatus = !occurrence.read;
+                                    setNotifications(prev => prev.map(n => n.id === occurrence.id ? { ...n, read: newStatus } : n));
+                                    await updateOccurrence(occurrence.id, { read: newStatus });
+                                  }}
+                                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition ${occurrence.read ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-green-100 text-green-700 hover:bg-green-200'}`}
                                 >
-                                  {occurrence.read ? '✓ Resolvido' : 'Marcar Resolvido'}
+                                  {occurrence.read ? 'Marcar como não lida' : 'Marcar como lida'}
                                 </button>
                                 <button
                                   className="px-3 py-1.5 text-xs font-medium bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-lg transition"
