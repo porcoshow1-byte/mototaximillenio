@@ -1035,10 +1035,29 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
     priority: 'medium' as 'low' | 'medium' | 'high' | 'critical'
   });
 
-  // Protocol generator - Format: OC-YYYYMMDD (11 chars)
+  // Sync timeline when selected occurrence changes
+  useEffect(() => {
+    if (selectedOccurrence) {
+      // Ensure we have the latest timeline from the notification object
+      const currentNotification = notifications.find(n => n.id === selectedOccurrence.id);
+      if (currentNotification && (currentNotification as any).timeline) {
+        setOccurrenceTimeline(prev => ({
+          ...prev,
+          [selectedOccurrence.id]: (currentNotification as any).timeline
+        }));
+      } else if (selectedOccurrence.timeline) {
+        setOccurrenceTimeline(prev => ({
+          ...prev,
+          [selectedOccurrence.id]: selectedOccurrence.timeline
+        }));
+      }
+    }
+  }, [selectedOccurrence, notifications]);
+
+  // Protocol generator - Format: OC-YYMMDD (9 chars)
   const generateProtocol = (prefix: string = 'OC') => {
     const date = new Date();
-    const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
+    const dateStr = date.toISOString().slice(2, 10).replace(/-/g, ''); // YYMMDD
     return `${prefix}-${dateStr}`;
   };
 
@@ -2011,7 +2030,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                         .slice(0, 5)
                         .map(ride => (
                           <option key={ride.id} value={ride.id}>
-                            📱 #{ride.id.substring(0, 6)} | {new Date(ride.createdAt || 0).toLocaleDateString('pt-BR')} | {(ride.origin || '').substring(0, 25)}...
+                            📱 #{ride.id.replace(/\D/g, '').substring(0, 6) || ride.id.substring(0, 4)} - {(ride.origin || '').substring(0, 20)}... → {(ride.destination || '').substring(0, 15)}...
                           </option>
                         ))}
                     </>
@@ -4494,7 +4513,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                       <div className="grid md:grid-cols-2 gap-4 text-sm">
                         <div>
                           <p className="text-gray-500 text-xs uppercase font-bold mb-1">ID da Corrida</p>
-                          <p className="font-mono text-gray-900">#{relatedRide.id}</p>
+                          <p className="font-mono text-gray-900">#{relatedRide.id.replace(/\D/g, '').substring(0, 8) || relatedRide.id.substring(0, 6)}</p>
                         </div>
                         <div>
                           <p className="text-gray-500 text-xs uppercase font-bold mb-1">Data e Hora</p>

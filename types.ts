@@ -130,5 +130,14 @@ export interface Occurrence {
   rideId?: string;
   passengerId?: string; // Searchable passenger
   driverId?: string;
+  ticketId?: string;
+  timeline?: Array<{
+    id: string;
+    type: 'comment' | 'status_change' | 'attachment';
+    content: string;
+    author: string;
+    timestamp: Date;
+    attachmentUrl?: string;
+  }>;
   status: 'pending' | 'resolved' | 'investigating';
 }
