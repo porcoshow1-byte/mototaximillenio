@@ -966,6 +966,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
   const [occurrencePassengerSearch, setOccurrencePassengerSearch] = useState('');
   const [occurrenceRideSearch, setOccurrenceRideSearch] = useState('');
   const [selectedOccurrence, setSelectedOccurrence] = useState<any | null>(null);
+  const [selectedNotificationIds, setSelectedNotificationIds] = useState<string[]>([]);
   const [occurrenceTimeline, setOccurrenceTimeline] = useState<Record<string, Array<{
     id: string;
     type: 'comment' | 'status_change' | 'attachment';
@@ -2812,7 +2813,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                       <AlertTriangle size={20} className="text-red-600" />
                     </div>
                     <div>
-                      <p className="text-2xl font-bold text-gray-900">{notifications.filter(n => n.type === 'ride_issue' && !n.read).length}</p>
+                      <p className="text-2xl font-bold text-gray-900">{notifications.filter(n => n.type === 'ride_issue' && n.status !== 'resolved').length}</p>
                       <p className="text-xs text-gray-500">Problemas em Corridas</p>
                     </div>
                   </div>
@@ -2823,7 +2824,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                       <Star size={20} className="text-yellow-600" />
                     </div>
                     <div>
-                      <p className="text-2xl font-bold text-gray-900">{notifications.filter(n => n.type === 'feedback' && !n.read).length}</p>
+                      <p className="text-2xl font-bold text-gray-900">{notifications.filter(n => n.type === 'feedback' && n.status !== 'resolved').length}</p>
                       <p className="text-xs text-gray-500">Avaliações Baixas</p>
                     </div>
                   </div>
@@ -2834,7 +2835,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                       <DollarSign size={20} className="text-green-600" />
                     </div>
                     <div>
-                      <p className="text-2xl font-bold text-gray-900">{notifications.filter(n => n.type === 'payment' && !n.read).length}</p>
+                      <p className="text-2xl font-bold text-gray-900">{notifications.filter(n => n.type === 'payment' && n.status !== 'resolved').length}</p>
                       <p className="text-xs text-gray-500">Pagamentos Pendentes</p>
                     </div>
                   </div>
@@ -2937,12 +2938,61 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                         .length} resultados)
                     </span>
                   </h3>
-                  <button
-                    onClick={() => setNotifications(notifications.map(n => ({ ...n, read: true })))}
-                    className="text-xs text-orange-600 hover:underline"
-                  >
-                    Marcar todas como resolvidas
-                  </button>
+                  <div className="flex gap-2 items-center">
+                    {selectedNotificationIds.length > 0 && (
+                      <div className="flex gap-2 animate-fade-in mr-2">
+                        <Button
+                          variant="danger"
+                          onClick={async () => {
+                            if (!confirm('Excluir itens selecionados?')) return;
+                            for (const id of selectedNotificationIds) await deleteOccurrence(id);
+                            setNotifications(prev => prev.filter(n => !selectedNotificationIds.includes(n.id)));
+                            setSelectedNotificationIds([]);
+                          }}
+                          className="py-1 px-2 text-xs h-8"
+                        >
+                          Excluir ({selectedNotificationIds.length})
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={async () => {
+                            const updates = selectedNotificationIds.map(id => updateOccurrence(id, { read: true }));
+                            await Promise.all(updates);
+                            setNotifications(prev => prev.map(n => selectedNotificationIds.includes(n.id) ? { ...n, read: true } : n));
+                            setSelectedNotificationIds([]);
+                          }}
+                          className="py-1 px-2 text-xs h-8 bg-white"
+                        >
+                          Marcar Lidos
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => setSelectedNotificationIds([])}
+                          className="py-1 px-2 text-xs h-8 bg-white text-gray-500"
+                        >
+                          Cancelar
+                        </Button>
+                      </div>
+                    )}
+                    <button
+                      onClick={() => {
+                        const filteredIds = notifications
+                          .filter(n => (n.type === 'ride_issue' || n.type === 'payment' || n.type === 'feedback' || n.type === 'support_request'))
+                          .filter(n => occurrenceTypeFilter === 'all' || n.type === occurrenceTypeFilter)
+                          .filter(n => occurrenceStatusFilter === 'all' || (occurrenceStatusFilter === 'pending' ? n.status !== 'resolved' : n.status === 'resolved'))
+                          .map(n => n.id);
+
+                        if (selectedNotificationIds.length === filteredIds.length) {
+                          setSelectedNotificationIds([]);
+                        } else {
+                          setSelectedNotificationIds(filteredIds);
+                        }
+                      }}
+                      className="text-xs text-orange-600 hover:underline font-medium"
+                    >
+                      {selectedNotificationIds.length > 0 ? 'Deselecionar Todos' : 'Selecionar Todos'}
+                    </button>
+                  </div>
                 </div>
                 <div className="divide-y divide-gray-100 max-h-[500px] overflow-y-auto">
                   {notifications
@@ -2959,6 +3009,21 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                         className={`p-4 hover:bg-gray-50 transition ${!occurrence.read ? 'bg-orange-50/30' : ''}`}
                       >
                         <div className="flex gap-4">
+                          <div className="pt-1">
+                            <input
+                              type="checkbox"
+                              checked={selectedNotificationIds.includes(occurrence.id)}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                if (selectedNotificationIds.includes(occurrence.id)) {
+                                  setSelectedNotificationIds(prev => prev.filter(id => id !== occurrence.id));
+                                } else {
+                                  setSelectedNotificationIds(prev => [...prev, occurrence.id]);
+                                }
+                              }}
+                              className="rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer"
+                            />
+                          </div>
                           <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${occurrence.type === 'ride_issue' ? 'bg-red-100 text-red-600' :
                             occurrence.type === 'payment' ? 'bg-green-100 text-green-600' :
                               occurrence.type === 'support_request' ? 'bg-blue-100 text-blue-600' :
@@ -2976,7 +3041,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                                   <h4 className={`font-bold ${!occurrence.read ? 'text-gray-900' : 'text-gray-700'}`}>
                                     {occurrence.title}
                                   </h4>
-                                  {occurrence.read ? (
+                                  {occurrence.status === 'resolved' ? (
                                     <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-bold rounded-full border border-green-200">
                                       RESOLVIDO
                                     </span>
@@ -3020,13 +3085,13 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                                 <button
                                   onClick={async (e) => {
                                     e.stopPropagation();
-                                    const newStatus = !occurrence.read;
-                                    setNotifications(prev => prev.map(n => n.id === occurrence.id ? { ...n, read: newStatus, status: newStatus ? 'resolved' : 'pending' } : n));
-                                    await updateOccurrence(occurrence.id, { read: newStatus, status: newStatus ? 'resolved' : 'pending' });
+                                    const newRead = !occurrence.read;
+                                    setNotifications(prev => prev.map(n => n.id === occurrence.id ? { ...n, read: newRead } : n));
+                                    await updateOccurrence(occurrence.id, { read: newRead });
                                   }}
-                                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition ${occurrence.read ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-green-100 text-green-700 hover:bg-green-200'}`}
+                                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition ${occurrence.read ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
                                 >
-                                  {occurrence.read ? 'Reabrir' : 'Resolver'}
+                                  {occurrence.read ? 'Marcar como não lida' : 'Marcar como lida'}
                                 </button>
                                 <button
                                   className="px-3 py-1.5 text-xs font-medium bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-lg transition"
@@ -4487,7 +4552,6 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                       {selectedOccurrence.read ? '✓ Resolvido' : '⏳ Pendente'}
                     </span>
                     <Button
-                      size="sm"
                       variant={selectedOccurrence.read ? 'outline' : 'success'}
                       onClick={async () => {
                         const newStatus = !selectedOccurrence.read;
