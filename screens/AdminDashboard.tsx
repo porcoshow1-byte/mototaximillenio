@@ -4468,189 +4468,206 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
               </div>
             </div>
 
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {/* Status */}
-              <div className="flex items-center gap-4">
-                <span className={`px-4 py-2 rounded-full font-bold text-sm ${selectedOccurrence.read ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'
-                  }`}>
-                  {selectedOccurrence.read ? '✓ Resolvido' : '⏳ Pendente'}
-                </span>
-                <button
-                  onClick={() => {
-                    setNotifications(notifications.map(n => n.id === selectedOccurrence.id ? { ...n, read: !n.read } : n));
-                    setSelectedOccurrence({ ...selectedOccurrence, read: !selectedOccurrence.read });
-                  }}
-                  className="text-sm text-orange-600 hover:underline"
-                >
-                  {selectedOccurrence.read ? 'Marcar como Pendente' : 'Marcar como Resolvido'}
-                </button>
+            {/* Content - 2 Column Layout */}
+            <div className="flex-1 overflow-hidden flex flex-col md:flex-row bg-white">
+              {/* Left Column: Details (Scrollable) */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                {/* Status */}
+                <div className="flex items-center gap-4">
+                  <span className={`px-4 py-2 rounded-full font-bold text-sm ${selectedOccurrence.read ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'
+                    }`}>
+                    {selectedOccurrence.read ? '✓ Resolvido' : '⏳ Pendente'}
+                  </span>
+                  <button
+                    onClick={() => {
+                      setNotifications(notifications.map(n => n.id === selectedOccurrence.id ? { ...n, read: !n.read } : n));
+                      setSelectedOccurrence({ ...selectedOccurrence, read: !selectedOccurrence.read });
+                    }}
+                    className="text-sm text-orange-600 hover:underline"
+                  >
+                    {selectedOccurrence.read ? 'Marcar como Pendente' : 'Marcar como Resolvido'}
+                  </button>
+                </div>
+
+                {/* Description */}
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                  <h3 className="font-bold text-gray-700 mb-2 flex items-center gap-2">
+                    <FileText size={16} /> Descrição Detalhada
+                  </h3>
+                  <p className="text-gray-700 whitespace-pre-wrap">{selectedOccurrence.message || 'Sem descrição disponível.'}</p>
+                </div>
+
+                {/* Related Ride Details */}
+                {selectedOccurrence.rideId && (() => {
+                  // Find the related ride
+                  const relatedRide = safeData.recentRides.find(r => r.id === selectedOccurrence.rideId);
+                  const relatedCall = activeCalls.find(c => c.id === selectedOccurrence.rideId);
+
+                  if (relatedRide) {
+                    return (
+                      <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+                        <h3 className="font-bold text-blue-700 mb-3 flex items-center gap-2">
+                          <Car size={16} /> Viagem Relacionada
+                        </h3>
+                        <div className="grid md:grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <p className="text-gray-500 text-xs uppercase font-bold mb-1">ID da Corrida</p>
+                            <p className="font-mono text-gray-900">#{relatedRide.id.replace(/\D/g, '').substring(0, 8) || relatedRide.id.substring(0, 6)}</p>
+                          </div>
+                          <div>
+                            <p className="text-gray-500 text-xs uppercase font-bold mb-1">Data e Hora</p>
+                            <p className="text-gray-900">
+                              {new Date(relatedRide.createdAt || 0).toLocaleDateString('pt-BR')} às {new Date(relatedRide.createdAt || 0).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                          </div>
+                          <div className="md:col-span-2">
+                            <p className="text-gray-500 text-xs uppercase font-bold mb-1">📍 Origem</p>
+                            <p className="text-gray-900">{relatedRide.origin || 'Não informado'}</p>
+                          </div>
+                          <div className="md:col-span-2">
+                            <p className="text-gray-500 text-xs uppercase font-bold mb-1">📍 Destino</p>
+                            <p className="text-gray-900">{relatedRide.destination || 'Não informado'}</p>
+                          </div>
+                          <div>
+                            <p className="text-gray-500 text-xs uppercase font-bold mb-1">Motorista</p>
+                            <p className="text-gray-900">{relatedRide.driver?.name || 'Não atribuído'}</p>
+                          </div>
+                          <div>
+                            <p className="text-gray-500 text-xs uppercase font-bold mb-1">Valor</p>
+                            <p className="text-green-600 font-bold">R$ {(relatedRide.price || 0).toFixed(2)}</p>
+                          </div>
+                          <div>
+                            <p className="text-gray-500 text-xs uppercase font-bold mb-1">Status da Corrida</p>
+                            <span className={`px-2 py-1 rounded text-xs font-bold ${relatedRide.status === 'completed' ? 'bg-green-100 text-green-700' :
+                              relatedRide.status === 'cancelled' ? 'bg-red-100 text-red-700' :
+                                'bg-yellow-100 text-yellow-700'
+                              }`}>
+                              {relatedRide.status === 'completed' ? 'Concluída' :
+                                relatedRide.status === 'cancelled' ? 'Cancelada' :
+                                  relatedRide.status === 'in_progress' ? 'Em Andamento' : relatedRide.status}
+                            </span>
+                          </div>
+                          <div>
+                            <p className="text-gray-500 text-xs uppercase font-bold mb-1">💳 Forma de Pagamento</p>
+                            <span className={`px-2 py-1 rounded text-xs font-bold ${(relatedRide.paymentMethod as string) === 'pix' ? 'bg-green-100 text-green-700' :
+                              (relatedRide.paymentMethod as string) === 'cash' ? 'bg-yellow-100 text-yellow-700' :
+                                (relatedRide.paymentMethod as string) === 'card' ? 'bg-blue-100 text-blue-700' :
+                                  (relatedRide.paymentMethod as string) === 'wallet' ? 'bg-purple-100 text-purple-700' :
+                                    'bg-gray-100 text-gray-700'
+                              }`}>
+                              {(relatedRide.paymentMethod as string) === 'pix' ? '💰 PIX' :
+                                (relatedRide.paymentMethod as string) === 'cash' ? '💵 Dinheiro' :
+                                  (relatedRide.paymentMethod as string) === 'card' ? '💳 Cartão' :
+                                    (relatedRide.paymentMethod as string) === 'wallet' ? '👛 Carteira App' :
+                                      (relatedRide.paymentMethod as string) === 'coupon' ? '🎟️ Cupom' :
+                                        'Não informado'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  } else if (relatedCall) {
+                    return (
+                      <div className="bg-purple-50 rounded-xl p-4 border border-purple-100">
+                        <h3 className="font-bold text-purple-700 mb-3 flex items-center gap-2">
+                          <Phone size={16} /> Chamada Relacionada
+                        </h3>
+                        <div className="grid md:grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <p className="text-gray-500 text-xs uppercase font-bold mb-1">Protocolo</p>
+                            <p className="font-mono text-gray-900">{relatedCall.protocol}</p>
+                          </div>
+                          <div>
+                            <p className="text-gray-500 text-xs uppercase font-bold mb-1">Cliente</p>
+                            <p className="text-gray-900">{relatedCall.client.name} - {relatedCall.client.phone}</p>
+                          </div>
+                          <div className="md:col-span-2">
+                            <p className="text-gray-500 text-xs uppercase font-bold mb-1">📍 Origem</p>
+                            <p className="text-gray-900">{relatedCall.origin || 'Não informado'}</p>
+                          </div>
+                          <div className="md:col-span-2">
+                            <p className="text-gray-500 text-xs uppercase font-bold mb-1">📍 Destino</p>
+                            <p className="text-gray-900">{relatedCall.destination || 'Não informado'}</p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="bg-gray-50 rounded-xl p-4 border border-gray-200 text-center text-gray-500">
+                      <p>Viagem relacionada não encontrada (ID: {selectedOccurrence.rideId})</p>
+                    </div>
+                  );
+                })()}
+
+                {/* Passenger Info */}
+                {selectedOccurrence.passengerId && (() => {
+                  const passenger = safeData.passengers.find(p => p.id === selectedOccurrence.passengerId);
+                  if (passenger) {
+                    return (
+                      <div className="bg-indigo-50 rounded-xl p-4 border border-indigo-100">
+                        <h3 className="font-bold text-indigo-700 mb-3 flex items-center gap-2">
+                          <Users size={16} /> Cliente Relacionado
+                        </h3>
+                        <div className="grid md:grid-cols-3 gap-4 text-sm">
+                          <div>
+                            <p className="text-gray-500 text-xs uppercase font-bold mb-1">Nome</p>
+                            <p className="text-gray-900">{passenger.name}</p>
+                          </div>
+                          <div>
+                            <p className="text-gray-500 text-xs uppercase font-bold mb-1">Telefone</p>
+                            <p className="text-gray-900">{passenger.phone || 'N/A'}</p>
+                          </div>
+                          <div>
+                            <p className="text-gray-500 text-xs uppercase font-bold mb-1">Email</p>
+                            <p className="text-gray-900">{passenger.email || 'N/A'}</p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
 
-              {/* Description */}
-              <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
-                <h3 className="font-bold text-gray-700 mb-2 flex items-center gap-2">
-                  <FileText size={16} /> Descrição Detalhada
-                </h3>
-                <p className="text-gray-700 whitespace-pre-wrap">{selectedOccurrence.message || 'Sem descrição disponível.'}</p>
-              </div>
+              {/* Right Column: Timeline (Fixed width, full height) */}
+              <div className="w-full md:w-[400px] border-l border-gray-200 bg-gray-50 flex flex-col">
+                <div className="p-4 bg-white border-b border-gray-200 shadow-sm z-10">
+                  <h3 className="font-bold text-gray-700 flex items-center gap-2">
+                    <History size={16} /> Histórico de Atualizações
+                  </h3>
+                </div>
 
-              {/* Related Ride Details */}
-              {selectedOccurrence.rideId && (() => {
-                // Find the related ride
-                const relatedRide = safeData.recentRides.find(r => r.id === selectedOccurrence.rideId);
-                const relatedCall = activeCalls.find(c => c.id === selectedOccurrence.rideId);
-
-                if (relatedRide) {
-                  return (
-                    <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
-                      <h3 className="font-bold text-blue-700 mb-3 flex items-center gap-2">
-                        <Car size={16} /> Viagem Relacionada
-                      </h3>
-                      <div className="grid md:grid-cols-2 gap-4 text-sm">
-                        <div>
-                          <p className="text-gray-500 text-xs uppercase font-bold mb-1">ID da Corrida</p>
-                          <p className="font-mono text-gray-900">#{relatedRide.id.replace(/\D/g, '').substring(0, 8) || relatedRide.id.substring(0, 6)}</p>
-                        </div>
-                        <div>
-                          <p className="text-gray-500 text-xs uppercase font-bold mb-1">Data e Hora</p>
-                          <p className="text-gray-900">
-                            {new Date(relatedRide.createdAt || 0).toLocaleDateString('pt-BR')} às {new Date(relatedRide.createdAt || 0).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                          </p>
-                        </div>
-                        <div className="md:col-span-2">
-                          <p className="text-gray-500 text-xs uppercase font-bold mb-1">📍 Origem</p>
-                          <p className="text-gray-900">{relatedRide.origin || 'Não informado'}</p>
-                        </div>
-                        <div className="md:col-span-2">
-                          <p className="text-gray-500 text-xs uppercase font-bold mb-1">📍 Destino</p>
-                          <p className="text-gray-900">{relatedRide.destination || 'Não informado'}</p>
-                        </div>
-                        <div>
-                          <p className="text-gray-500 text-xs uppercase font-bold mb-1">Motorista</p>
-                          <p className="text-gray-900">{relatedRide.driver?.name || 'Não atribuído'}</p>
-                        </div>
-                        <div>
-                          <p className="text-gray-500 text-xs uppercase font-bold mb-1">Valor</p>
-                          <p className="text-green-600 font-bold">R$ {(relatedRide.price || 0).toFixed(2)}</p>
-                        </div>
-                        <div>
-                          <p className="text-gray-500 text-xs uppercase font-bold mb-1">Status da Corrida</p>
-                          <span className={`px-2 py-1 rounded text-xs font-bold ${relatedRide.status === 'completed' ? 'bg-green-100 text-green-700' :
-                            relatedRide.status === 'cancelled' ? 'bg-red-100 text-red-700' :
-                              'bg-yellow-100 text-yellow-700'
-                            }`}>
-                            {relatedRide.status === 'completed' ? 'Concluída' :
-                              relatedRide.status === 'cancelled' ? 'Cancelada' :
-                                relatedRide.status === 'in_progress' ? 'Em Andamento' : relatedRide.status}
-                          </span>
-                        </div>
-                        <div>
-                          <p className="text-gray-500 text-xs uppercase font-bold mb-1">💳 Forma de Pagamento</p>
-                          <span className={`px-2 py-1 rounded text-xs font-bold ${(relatedRide.paymentMethod as string) === 'pix' ? 'bg-green-100 text-green-700' :
-                            (relatedRide.paymentMethod as string) === 'cash' ? 'bg-yellow-100 text-yellow-700' :
-                              (relatedRide.paymentMethod as string) === 'card' ? 'bg-blue-100 text-blue-700' :
-                                (relatedRide.paymentMethod as string) === 'wallet' ? 'bg-purple-100 text-purple-700' :
-                                  'bg-gray-100 text-gray-700'
-                            }`}>
-                            {(relatedRide.paymentMethod as string) === 'pix' ? '💰 PIX' :
-                              (relatedRide.paymentMethod as string) === 'cash' ? '💵 Dinheiro' :
-                                (relatedRide.paymentMethod as string) === 'card' ? '💳 Cartão' :
-                                  (relatedRide.paymentMethod as string) === 'wallet' ? '👛 Carteira App' :
-                                    (relatedRide.paymentMethod as string) === 'coupon' ? '🎟️ Cupom' :
-                                      'Não informado'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                } else if (relatedCall) {
-                  return (
-                    <div className="bg-purple-50 rounded-xl p-4 border border-purple-100">
-                      <h3 className="font-bold text-purple-700 mb-3 flex items-center gap-2">
-                        <Phone size={16} /> Chamada Relacionada
-                      </h3>
-                      <div className="grid md:grid-cols-2 gap-4 text-sm">
-                        <div>
-                          <p className="text-gray-500 text-xs uppercase font-bold mb-1">Protocolo</p>
-                          <p className="font-mono text-gray-900">{relatedCall.protocol}</p>
-                        </div>
-                        <div>
-                          <p className="text-gray-500 text-xs uppercase font-bold mb-1">Cliente</p>
-                          <p className="text-gray-900">{relatedCall.client.name} - {relatedCall.client.phone}</p>
-                        </div>
-                        <div className="md:col-span-2">
-                          <p className="text-gray-500 text-xs uppercase font-bold mb-1">📍 Origem</p>
-                          <p className="text-gray-900">{relatedCall.origin || 'Não informado'}</p>
-                        </div>
-                        <div className="md:col-span-2">
-                          <p className="text-gray-500 text-xs uppercase font-bold mb-1">📍 Destino</p>
-                          <p className="text-gray-900">{relatedCall.destination || 'Não informado'}</p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                }
-                return (
-                  <div className="bg-gray-50 rounded-xl p-4 border border-gray-200 text-center text-gray-500">
-                    <p>Viagem relacionada não encontrada (ID: {selectedOccurrence.rideId})</p>
-                  </div>
-                );
-              })()}
-
-              {/* Passenger Info */}
-              {selectedOccurrence.passengerId && (() => {
-                const passenger = safeData.passengers.find(p => p.id === selectedOccurrence.passengerId);
-                if (passenger) {
-                  return (
-                    <div className="bg-indigo-50 rounded-xl p-4 border border-indigo-100">
-                      <h3 className="font-bold text-indigo-700 mb-3 flex items-center gap-2">
-                        <Users size={16} /> Cliente Relacionado
-                      </h3>
-                      <div className="grid md:grid-cols-3 gap-4 text-sm">
-                        <div>
-                          <p className="text-gray-500 text-xs uppercase font-bold mb-1">Nome</p>
-                          <p className="text-gray-900">{passenger.name}</p>
-                        </div>
-                        <div>
-                          <p className="text-gray-500 text-xs uppercase font-bold mb-1">Telefone</p>
-                          <p className="text-gray-900">{passenger.phone || 'N/A'}</p>
-                        </div>
-                        <div>
-                          <p className="text-gray-500 text-xs uppercase font-bold mb-1">Email</p>
-                          <p className="text-gray-900">{passenger.email || 'N/A'}</p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                }
-                return null;
-              })()}
-
-              {/* Timeline/Notes Section - Styled as vertical timeline */}
-              <div className="border-t border-gray-200 pt-4">
-                <h3 className="font-bold text-gray-700 mb-4 flex items-center gap-2">
-                  <History size={16} /> Histórico de Atualizações
-                </h3>
-                <div className="relative pl-6 border-l-2 border-blue-200 space-y-4 mb-4 max-h-64 overflow-y-auto">
+                <div className="flex-1 overflow-y-auto p-4 space-y-4">
                   {(occurrenceTimeline[selectedOccurrence.id] || []).length === 0 ? (
-                    <p className="text-gray-400 text-sm italic">Nenhuma atualização registrada.</p>
+                    <div className="py-8 text-center text-gray-400 text-sm">
+                      <History size={32} className="mx-auto mb-2 opacity-50" />
+                      <p>Nenhuma atualização registrada.</p>
+                      <p className="text-xs mt-1">Inicie a conversa abaixo.</p>
+                    </div>
                   ) : (
                     occurrenceTimeline[selectedOccurrence.id].map((entry, idx) => (
-                      <div key={entry.id} className="relative">
+                      <div key={entry.id} className="relative pl-4 group">
+                        {/* Timeline line */}
+                        {idx !== (occurrenceTimeline[selectedOccurrence.id].length - 1) && (
+                          <div className="absolute left-[7px] top-6 bottom-[-20px] w-0.5 bg-gray-200"></div>
+                        )}
                         {/* Timeline dot */}
-                        <div className="absolute -left-[25px] w-4 h-4 bg-blue-500 rounded-full border-2 border-white shadow" />
-                        <div className="p-3 bg-gray-50 rounded-lg group">
+                        <div className="absolute left-0 top-1.5 w-3.5 h-3.5 rounded-full bg-blue-500 border-2 border-white shadow-sm z-10" />
+
+                        <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100 hover:border-blue-200 transition">
                           <div className="flex justify-between items-start">
-                            <div className="flex-1">
-                              <p className="text-sm text-gray-700 whitespace-pre-wrap">{entry.content}</p>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">{entry.content}</p>
                               {entry.attachmentUrl && (
-                                <a href={entry.attachmentUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 mt-2 text-xs text-blue-600 hover:underline">
-                                  <Paperclip size={12} /> Ver anexo
+                                <a href={entry.attachmentUrl} download={`anexo-${entry.timestamp}`} className="inline-flex items-center gap-1.5 mt-2 px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs hover:bg-blue-100 transition">
+                                  <Paperclip size={12} />
+                                  <span className="truncate max-w-[150px]">Ver anexo</span>
+                                  <Download size={10} />
                                 </a>
                               )}
                             </div>
-                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                            <div className="flex flex-col gap-1 ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
                               <button
                                 onClick={() => {
                                   const newContent = prompt('Editar mensagem:', entry.content);
@@ -4663,7 +4680,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                                     });
                                   }
                                 }}
-                                className="p-1 text-gray-400 hover:text-blue-600"
+                                className="p-1 text-gray-400 hover:text-blue-500 rounded hover:bg-gray-100"
                                 title="Editar"
                               >
                                 <Edit2 size={12} />
@@ -4677,30 +4694,32 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                                     });
                                   }
                                 }}
-                                className="p-1 text-gray-400 hover:text-red-600"
+                                className="p-1 text-gray-400 hover:text-red-500 rounded hover:bg-gray-100"
                                 title="Excluir"
                               >
                                 <Trash2 size={12} />
                               </button>
                             </div>
                           </div>
-                          <p className="text-xs text-gray-400 mt-1">
-                            {entry.author} • {safeDate(entry.timestamp).toLocaleString('pt-BR')}
+                          <p className="text-[10px] text-gray-400 mt-2 flex justify-between items-center">
+                            <span>{entry.author}</span>
+                            <span>{safeDate(entry.timestamp).toLocaleString('pt-BR')}</span>
                           </p>
                         </div>
                       </div>
                     ))
                   )}
                 </div>
-                {/* Input area with attachment options */}
-                <div className="space-y-2">
+
+                {/* Footer Input Area */}
+                <div className="p-4 bg-white border-t border-gray-200">
                   <div className="flex gap-2">
                     <input
                       type="text"
                       value={newTimelineComment}
                       onChange={(e) => setNewTimelineComment(e.target.value)}
-                      placeholder="Adicionar comentário ou atualização..."
-                      className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Digite..."
+                      className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition shadow-sm"
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && newTimelineComment.trim()) {
                           const newEntry = {
@@ -4736,15 +4755,15 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                         }
                       }}
                       disabled={!newTimelineComment.trim()}
-                      className="!bg-blue-600 hover:!bg-blue-700"
+                      className="!bg-blue-600 hover:!bg-blue-700 !p-2 rounded-lg"
                     >
-                      <Send size={16} />
+                      <Send size={18} />
                     </Button>
                   </div>
                   {/* Attachment options */}
-                  <div className="flex gap-2 text-xs">
-                    <label className="flex items-center gap-1 px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded cursor-pointer transition">
-                      <ImageIcon size={14} /> Imagem
+                  <div className="flex gap-1 mt-2 justify-between">
+                    <label className="flex-1 flex justify-center items-center gap-1.5 px-2 py-1.5 bg-gray-50 hover:bg-gray-100 rounded cursor-pointer transition border border-gray-200 text-xs text-gray-600">
+                      <ImageIcon size={14} className="text-blue-500" /> Imagem
                       <input type="file" accept="image/*" className="hidden" onChange={(e) => {
                         if (e.target.files?.[0]) {
                           const file = e.target.files[0];
@@ -4767,8 +4786,8 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                         }
                       }} />
                     </label>
-                    <label className="flex items-center gap-1 px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded cursor-pointer transition">
-                      <FileText size={14} /> PDF
+                    <label className="flex-1 flex justify-center items-center gap-1.5 px-2 py-1.5 bg-gray-50 hover:bg-gray-100 rounded cursor-pointer transition border border-gray-200 text-xs text-gray-600">
+                      <FileText size={14} className="text-red-500" /> PDF
                       <input type="file" accept=".pdf" className="hidden" onChange={(e) => {
                         if (e.target.files?.[0]) {
                           const file = e.target.files[0];
@@ -4791,8 +4810,8 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                         }
                       }} />
                     </label>
-                    <label className="flex items-center gap-1 px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded cursor-pointer transition">
-                      🎵 Áudio
+                    <label className="flex-1 flex justify-center items-center gap-1.5 px-2 py-1.5 bg-gray-50 hover:bg-gray-100 rounded cursor-pointer transition border border-gray-200 text-xs text-gray-600">
+                      <Zap size={14} className="text-purple-500" /> Áudio
                       <input type="file" accept="audio/*" className="hidden" onChange={(e) => {
                         if (e.target.files?.[0]) {
                           const file = e.target.files[0];
