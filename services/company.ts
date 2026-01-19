@@ -134,10 +134,39 @@ export const updateCompanyStatus = async (companyId: string, status: 'active' | 
     }
 };
 
-export const getCompanyByOwner = async (ownerUid: string): Promise<Company | null> => {
+export const deleteCompany = async (companyId: string): Promise<void> => {
     if (!db) {
         const companies = getMockData();
-        return companies.find(c => c.ownerUid === ownerUid) || null;
+        const filtered = companies.filter(c => c.id !== companyId);
+        saveMockData(filtered);
+        return;
+    }
+    try {
+        const { deleteDoc } = await import('firebase/firestore');
+        await deleteDoc(doc(db, COLLECTION_NAME, companyId));
+    } catch (error) {
+        console.error("Error deleting company:", error);
+        throw error;
+    }
+};
+
+export const getCompanyByOwner = async (ownerUid: string): Promise<Company | null> => {
+    console.log('[getCompanyByOwner] Searching for ownerUid:', ownerUid);
+
+    if (!db) {
+        const companies = getMockData();
+        console.log('[getCompanyByOwner] Mock companies:', companies.map(c => ({ id: c.id, ownerUid: c.ownerUid, email: c.email })));
+
+        // First try to find by ownerUid
+        let found = companies.find(c => c.ownerUid === ownerUid);
+
+        // If not found, try to find by ID (in case ID === ownerUid)
+        if (!found) {
+            found = companies.find(c => c.id === ownerUid);
+        }
+
+        console.log('[getCompanyByOwner] Found:', found ? found.name : 'null');
+        return found || null;
     }
     try {
         const q = query(collection(db, COLLECTION_NAME), where('ownerUid', '==', ownerUid));

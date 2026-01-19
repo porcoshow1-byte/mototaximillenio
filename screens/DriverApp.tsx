@@ -468,7 +468,7 @@ export const DriverApp = () => {
               </h3>
               <div className="flex items-center gap-2 text-xs text-gray-400">
                 <span className="bg-orange-500 px-1.5 rounded text-white font-bold flex items-center gap-0.5">
-                  {currentDriver.rating.toFixed(1)} <Star size={10} fill="white" />
+                  {(currentDriver.rating || 0).toFixed(1)} <Star size={10} fill="white" />
                 </span>
                 {/* GPS Status Dot */}
                 <span className="flex items-center gap-1">
@@ -573,7 +573,7 @@ export const DriverApp = () => {
             <div className={`w-full bg-gray-800 rounded-2xl p-5 shadow-2xl border border-gray-700 ${requestAnimation}`}>
               <div className="flex justify-between items-start mb-4">
                 <Badge color="orange">{currentRequest.serviceType}</Badge>
-                <span className="text-xl font-bold text-white">R$ {currentRequest.price.toFixed(2)}</span>
+                <span className="text-xl font-bold text-white">R$ {(currentRequest.price || 0).toFixed(2)}</span>
               </div>
 
               <div className="flex flex-col gap-4 mb-6">
@@ -692,7 +692,7 @@ export const DriverApp = () => {
               <p className="text-gray-400 text-sm mb-1">Ganhos Totais</p>
               <h3 className="text-4xl font-bold text-green-400">R$ {earnings.toFixed(2)}</h3>
             </div>
-            {historyRides.length === 0 ? <p className="text-gray-500 text-center py-10">Nenhuma corrida finalizada ainda.</p> : historyRides.map((ride) => <div key={ride.id} className="bg-gray-800 p-4 rounded-xl border border-gray-700 flex justify-between items-center"><div><p className="font-bold text-white">{ride.destination}</p></div><div className="text-right"><p className="font-bold text-green-400">+ R$ {ride.price.toFixed(2)}</p></div></div>)}
+            {historyRides.length === 0 ? <p className="text-gray-500 text-center py-10">Nenhuma corrida finalizada ainda.</p> : historyRides.map((ride) => <div key={ride.id} className="bg-gray-800 p-4 rounded-xl border border-gray-700 flex justify-between items-center"><div><p className="font-bold text-white">{ride.destination}</p></div><div className="text-right"><p className="font-bold text-green-400">+ R$ {(ride.price || 0).toFixed(2)}</p></div></div>)}
           </div>
         </div>
       )}
@@ -730,7 +730,7 @@ export const DriverApp = () => {
                 <div className="text-center animate-fade-in">
                   <div className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-orange-500 mb-4 shadow-lg shadow-orange-500/30">
                     <span className="text-4xl font-bold text-white flex items-center gap-1">
-                      {currentDriver.rating.toFixed(1)} <Star size={24} fill="white" />
+                      {(currentDriver.rating || 0).toFixed(1)} <Star size={24} fill="white" />
                     </span>
                   </div>
                   <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'} mb-6`}>Baseado nas últimas 50 avaliações</p>
@@ -793,7 +793,7 @@ export const DriverApp = () => {
                       <option value="">{historyRides.length > 0 ? "Nenhuma corrida específica" : "Nenhuma corrida encontrada"}</option>
                       {historyRides.slice(0, 10).map((ride) => (
                         <option key={ride.id} value={ride.id}>
-                          {new Date(ride.createdAt).toLocaleDateString('pt-BR')} - {typeof ride.destination === 'string' ? ride.destination.slice(0, 30) : 'Corrida'} - R$ {ride.price.toFixed(2)}
+                          {new Date(ride.createdAt).toLocaleDateString('pt-BR')} - {typeof ride.destination === 'string' ? ride.destination.slice(0, 30) : 'Corrida'} - R$ {(ride.price || 0).toFixed(2)}
                         </option>
                       ))}
                     </select>

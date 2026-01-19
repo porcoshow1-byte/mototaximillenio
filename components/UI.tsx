@@ -20,7 +20,7 @@ export const Button = ({
   disabled?: boolean;
   style?: React.CSSProperties;
 }) => {
-  const baseStyle = "px-4 py-3 rounded-xl font-semibold transition-all duration-200 flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 disabled:pointer-events-none";
+  const baseStyle = "px-4 py-2 rounded-xl font-semibold transition-all duration-200 flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 disabled:pointer-events-none";
 
   const variants = {
     primary: "bg-orange-500 text-white hover:bg-orange-600 shadow-lg shadow-orange-500/20",

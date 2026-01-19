@@ -30,6 +30,18 @@ export interface Company {
   phone?: string;
   contractUrl?: string;
   ownerUid?: string;
+  tradeName?: string;
+  stateInscription?: string;
+  addressComponents?: {
+    street: string;
+    number: string;
+    neighborhood: string;
+    city: string;
+    state: string;
+    cep: string;
+    complement?: string;
+  };
+  isTempPassword?: boolean;
 }
 
 export interface User {

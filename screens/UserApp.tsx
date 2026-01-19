@@ -663,7 +663,7 @@ export const UserApp = () => {
                       {isDisabled && <p className="text-[10px] text-red-500 font-bold mt-1">Apenas até 2km</p>}
                     </div>
                   </div>
-                  <div className="text-right relative z-10"><p className="font-bold text-gray-900 text-lg">R$ {price.toFixed(2).replace('.', ',')}</p></div>
+                  <div className="text-right relative z-10"><p className="font-bold text-gray-900 text-lg">R$ {(price || 0).toFixed(2).replace('.', ',')}</p></div>
                   {isDisabled && (<div className="absolute inset-0 bg-white/40 z-0"></div>)}
                 </div>
               );
@@ -772,7 +772,7 @@ export const UserApp = () => {
           <div className="p-6 flex flex-col items-center overflow-y-auto">
             <div className="mb-2 text-center">
               <p className="text-gray-500 text-sm">Valor a pagar</p>
-              <p className="text-3xl font-bold text-gray-900">R$ {currentRide?.price?.toFixed(2)}</p>
+              <p className="text-3xl font-bold text-gray-900">R$ {(currentRide?.price || 0).toFixed(2)}</p>
             </div>
 
             {/* QR Code Container */}

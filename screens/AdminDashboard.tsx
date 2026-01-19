@@ -12,7 +12,7 @@ import { Card, Button, Badge, Input } from '../components/UI';
 import { fetchDashboardData, DashboardData, createOccurrence, deleteOccurrence, updateOccurrence } from '../services/admin';
 
 import { updateUserProfile } from '../services/user';
-import { getAllCompanies, saveCompany } from '../services/company';
+import { getAllCompanies, saveCompany, subscribeToCompanies } from '../services/company';
 import { subscribeToTickets, SupportTicket } from '../services/support';
 import { db, isMockMode } from '../services/firebase';
 import { playSound } from '../services/audio';
@@ -229,7 +229,7 @@ const UserDetailModal = ({ user, onClose, rides }: { user: User; onClose: () => 
       const newBalance = walletBalance + amount;
       setWalletBalance(newBalance);
       setAmountToAdd('');
-      alert(`R$ ${amount.toFixed(2)} adicionados com sucesso! Novo saldo: R$ ${newBalance.toFixed(2)}`);
+      alert(`R$ ${(amount || 0).toFixed(2)} adicionados com sucesso! Novo saldo: R$ ${(newBalance || 0).toFixed(2)}`);
       // TODO: Persist logic here
     }
   };
@@ -355,7 +355,7 @@ const UserDetailModal = ({ user, onClose, rides }: { user: User; onClose: () => 
             <div className="space-y-6">
               <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-xl p-6 text-white shadow-lg">
                 <p className="text-gray-400 text-sm mb-1">Saldo em Carteira</p>
-                <h3 className="text-3xl font-bold">R$ {walletBalance.toFixed(2)}</h3>
+                <h3 className="text-3xl font-bold">R$ {(walletBalance || 0).toFixed(2)}</h3>
               </div>
 
               <div>
@@ -388,7 +388,7 @@ const UserDetailModal = ({ user, onClose, rides }: { user: User; onClose: () => 
                       <p className="text-xs text-gray-500 truncate w-48">{ride.origin} ➔ {ride.destination}</p>
                     </div>
                     <div className="text-right">
-                      <span className="block font-bold text-gray-900">R$ {ride.price.toFixed(2)}</span>
+                      <span className="block font-bold text-gray-900">R$ {(ride.price || 0).toFixed(2)}</span>
                       <span className="text-[10px] uppercase font-bold text-gray-400">{ride.status}</span>
                     </div>
                   </div>
@@ -550,25 +550,29 @@ const SearchingOverlay = ({ show }: { show: boolean }) => {
   );
 };
 
-const CompanyFormModal = ({ company, onClose, onSave }: { company?: any; onClose: () => void; onSave: (data: any) => void }) => {
+const CompanyFormModal = ({ company, onClose, onSave, onDelete }: { company?: any; onClose: () => void; onSave: (data: any) => void; onDelete?: (id: string) => void }) => {
   const [formData, setFormData] = useState({
     name: company?.name || '',
+    tradeName: company?.tradeName || '',
     cnpj: company?.cnpj || '',
+    stateInscription: company?.stateInscription || '',
     email: company?.email || '',
     phone: company?.phone || '',
+    financialManagerPhone: company?.financialManagerPhone || '',
     creditLimit: company?.creditLimit || 1000,
     address: company?.address || '',
-    // Address decomposition (initially empty or parsed if possible, simplified here)
-    cep: '',
-    street: '',
-    number: '',
-    neighborhood: '',
-    city: '',
-    state: '',
-    complement: '',
+    // Address decomposition from addressComponents if available, else empty/legacy
+    cep: company?.addressComponents?.cep || '',
+    street: company?.addressComponents?.street || '',
+    number: company?.addressComponents?.number || '',
+    neighborhood: company?.addressComponents?.neighborhood || '',
+    city: company?.addressComponents?.city || '',
+    state: company?.addressComponents?.state || '',
+    complement: company?.addressComponents?.complement || '',
     logoUrl: company?.logoUrl || '',
     password: '',
-    confirmPassword: ''
+    confirmPassword: '',
+    isTempPassword: company?.isTempPassword || false
   });
 
   const [loadingCep, setLoadingCep] = useState(false);
@@ -576,10 +580,30 @@ const CompanyFormModal = ({ company, onClose, onSave }: { company?: any; onClose
   // If editing, try to fill address fields if they adhere to the format, 
   // otherwise just leave them for manual correction (or keep main address string as fallback)
   useEffect(() => {
-    if (company && company.address) {
-      // Basic attempt to parse or just leave mostly empty for user to refine
-      // Ideally, the backend would return structured data. For now, we respect the string.
-      setFormData(prev => ({ ...prev, address: company.address }));
+    if (company) {
+      const addressFields = company.addressComponents || {};
+      setFormData(prev => ({
+        ...prev,
+        name: company.name || '',
+        tradeName: company.tradeName || '',
+        cnpj: company.cnpj || '',
+        stateInscription: company.stateInscription || '',
+        email: company.email || '',
+        phone: company.phone || '',
+        financialManagerPhone: company.financialManagerPhone || '',
+        logoUrl: company.logoUrl || '',
+        creditLimit: company.creditLimit || 0,
+        isTempPassword: company.isTempPassword || false,
+        address: company.address || '',
+        // Address components
+        cep: addressFields.cep || '',
+        street: addressFields.street || '',
+        number: addressFields.number || '',
+        neighborhood: addressFields.neighborhood || '',
+        city: addressFields.city || '',
+        state: addressFields.state || '',
+        complement: addressFields.complement || ''
+      }));
     }
   }, [company]);
 
@@ -624,9 +648,11 @@ const CompanyFormModal = ({ company, onClose, onSave }: { company?: any; onClose
   const handleSubmit = () => {
     if (!formData.name || !formData.cnpj || !formData.email) return alert('Preencha os campos obrigatórios (*)');
 
-    // Password validation
+    // Password validation - only check if a new password was entered
     if (!company && !formData.password) return alert('Defina uma senha de acesso para a empresa');
-    if (formData.password && formData.password !== formData.confirmPassword) return alert('As senhas não conferem');
+    if (formData.password && formData.password.length > 0 && formData.password !== formData.confirmPassword) {
+      return alert('As senhas não conferem');
+    }
 
     // Build the full address string from components if CEP was used, otherwise fallback to existing address field
     let fullAddress = formData.address;
@@ -636,6 +662,7 @@ const CompanyFormModal = ({ company, onClose, onSave }: { company?: any; onClose
     }
 
     onSave({
+      ...(company || {}),
       ...formData,
       address: fullAddress,
       id: company?.id
@@ -671,13 +698,25 @@ const CompanyFormModal = ({ company, onClose, onSave }: { company?: any; onClose
               <label className="block text-sm font-medium text-gray-700 mb-1">Nome da Empresa *</label>
               <Input value={formData.name} onChange={(e: any) => setFormData({ ...formData, name: e.target.value })} placeholder="Razão Social" />
             </div>
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nome Fantasia</label>
+              <Input value={formData.tradeName} onChange={(e: any) => setFormData({ ...formData, tradeName: e.target.value })} placeholder="Nome Comercial" />
+            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">CNPJ *</label>
               <Input value={formData.cnpj} onChange={(e: any) => setFormData({ ...formData, cnpj: e.target.value })} placeholder="00.000.000/0000-00" />
             </div>
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Inscrição Estadual</label>
+              <Input value={formData.stateInscription} onChange={(e: any) => setFormData({ ...formData, stateInscription: e.target.value })} placeholder="000.000.000.000" />
+            </div>
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Telefone</label>
               <Input value={formData.phone} onChange={(e: any) => setFormData({ ...formData, phone: e.target.value })} placeholder="(00) 0000-0000" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Tel. Gestor Financeiro</label>
+              <Input value={formData.financialManagerPhone} onChange={(e: any) => setFormData({ ...formData, financialManagerPhone: e.target.value })} placeholder="(00) 0000-0000" />
             </div>
           </div>
 
@@ -771,7 +810,7 @@ const CompanyFormModal = ({ company, onClose, onSave }: { company?: any; onClose
                   type="password"
                   value={formData.password}
                   onChange={(e: any) => setFormData({ ...formData, password: e.target.value })}
-                  placeholder={company ? "Manter atual" : "********"}
+                  placeholder={company ? "Deixe vazio para manter" : "********"}
                 />
               </div>
               <div>
@@ -780,16 +819,64 @@ const CompanyFormModal = ({ company, onClose, onSave }: { company?: any; onClose
                   type="password"
                   value={formData.confirmPassword}
                   onChange={(e: any) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                  placeholder={company ? "Manter atual" : "********"}
+                  placeholder={company ? "Deixe vazio para manter" : "********"}
                 />
               </div>
             </div>
             {!company && <p className="text-xs text-orange-600 mt-2">A empresa receberá um e-mail de confirmação, mas a senha definida aqui já permite acesso imediato.</p>}
+
+            <div className="mt-4 flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="isTempPassword"
+                checked={formData.isTempPassword}
+                onChange={(e) => setFormData({ ...formData, isTempPassword: e.target.checked })}
+                className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+              />
+              <label htmlFor="isTempPassword" className="text-sm text-gray-700">Senha Temporária (Usuário deverá trocar no próximo login)</label>
+            </div>
           </div>
 
-          <div className="pt-4 flex gap-3">
-            <Button variant="outline" onClick={onClose} className="flex-1">Cancelar</Button>
-            <Button onClick={handleSubmit} className="flex-1">Salvar Alterações</Button>
+          <div className="pt-4 space-y-3">
+            {/* Action buttons row */}
+            {company && (
+              <div className="flex gap-2">
+                {company.status === 'pending' && (
+                  <Button variant="success" className="flex-1" onClick={() => {
+                    if (confirm('Aprovar cadastro desta empresa?')) {
+                      onSave({ ...company, ...formData, status: 'active' });
+                    }
+                  }}>
+                    Aprovar Cadastro
+                  </Button>
+                )}
+
+                <Button variant="danger" onClick={() => {
+                  const isBlocked = company.status === 'blocked';
+                  if (confirm(isBlocked ? 'Desbloquear esta empresa?' : 'Bloquear acesso desta empresa?')) {
+                    onSave({ ...company, ...formData, status: isBlocked ? 'active' : 'blocked' });
+                  }
+                }} className="flex-1 bg-red-600 text-white hover:bg-red-700">
+                  {company.status === 'blocked' ? 'Desbloquear' : 'Bloquear Acesso'}
+                </Button>
+
+                {onDelete && (
+                  <Button variant="outline" onClick={() => {
+                    if (confirm('ATENÇÃO: Esta ação é irreversível! Deseja realmente excluir esta empresa permanentemente?')) {
+                      onDelete(company.id);
+                    }
+                  }} className="text-red-600 border-red-200 hover:bg-red-50">
+                    Excluir
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {/* Save/Cancel row */}
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={onClose} className="flex-1">Cancelar</Button>
+              <Button variant="success" onClick={handleSubmit} className="flex-1">Salvar Alterações</Button>
+            </div>
           </div>
         </div>
       </div>
@@ -817,14 +904,56 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
 
   const handleSaveCompany = async (data: any) => {
     try {
+      // Build addressComponents from individual fields for persistence
+      const addressComponents = {
+        cep: data.cep || '',
+        street: data.street || '',
+        number: data.number || '',
+        neighborhood: data.neighborhood || '',
+        city: data.city || '',
+        state: data.state || '',
+        complement: data.complement || ''
+      };
+
+      // Clean up form-only fields and add addressComponents
+      const companyToSave = {
+        ...data,
+        addressComponents,
+        // Save password hash if a new password was provided
+        passwordHash: data.password && data.password.length > 0 ? data.password : (data.passwordHash || ''),
+        isTempPassword: data.isTempPassword || false,
+        // Remove temporary form fields that shouldn't be persisted
+        password: undefined,
+        confirmPassword: undefined
+      };
+      delete companyToSave.password;
+      delete companyToSave.confirmPassword;
+
       if (editingCompany) {
+        // Make sure ID is preserved
+        companyToSave.id = editingCompany.id;
+
         // Update local list optimistically
-        setCompanies(companies.map(c => c.id === data.id ? data : c));
+        setCompanies(companies.map(c => c.id === companyToSave.id ? companyToSave : c));
         // Save to storage
-        await saveCompany(data);
-        alert('Empresa atualizada com sucesso!');
+        await saveCompany(companyToSave);
+
+        // Show appropriate message based on action
+        if (data.status !== editingCompany.status) {
+          if (data.status === 'blocked') {
+            alert('Empresa bloqueada com sucesso!');
+          } else if (data.status === 'active' && editingCompany.status === 'blocked') {
+            alert('Empresa desbloqueada com sucesso!');
+          } else if (data.status === 'active' && editingCompany.status === 'pending') {
+            alert('Empresa aprovada com sucesso!');
+          } else {
+            alert('Empresa atualizada com sucesso!');
+          }
+        } else {
+          alert('Empresa atualizada com sucesso!');
+        }
       } else {
-        const newCompany = { ...data, id: String(Date.now()), usedCredit: 0, status: 'active' };
+        const newCompany = { ...companyToSave, id: String(Date.now()), usedCredit: 0, status: 'active' };
         // Update local list
         setCompanies([...companies, newCompany]);
         // Save to storage
@@ -832,22 +961,50 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
         alert(`Empresa ${data.name} cadastrada com sucesso! Senha de acesso definida.`);
       }
       setShowCompanyModal(false);
+      setEditingCompany(null);
     } catch (error) {
       console.error(error);
       alert('Erro ao salvar empresa.');
     }
   };
 
-  useEffect(() => {
-    // Load companies from shared service
-    if (activeTab === 'companies') {
-      const loadCompanies = async () => {
-        const data = await getAllCompanies();
-        setCompanies(data);
-      };
-      loadCompanies();
+  const handleDeleteCompany = async (companyId: string) => {
+    try {
+      const { deleteCompany } = await import('../services/company');
+      await deleteCompany(companyId);
+      setCompanies(companies.filter(c => c.id !== companyId));
+      setShowCompanyModal(false);
+      setEditingCompany(null);
+      alert('Empresa excluída com sucesso!');
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao excluir empresa.');
     }
-  }, [activeTab]);
+  };
+
+  // Real-time Companies Subscription & Notifications
+  const companiesRef = React.useRef(companies);
+  useEffect(() => {
+    companiesRef.current = companies;
+  }, [companies]);
+
+  useEffect(() => {
+    // Subscribe to all companies (or ideally just pending ones if optimizing, but we need full list)
+    const unsubscribe = subscribeToCompanies((data) => {
+      // Check for NEW pending companies
+      const prevPending = companiesRef.current.filter(c => c.status === 'pending').length;
+      const currentPending = data.filter(c => c.status === 'pending').length;
+
+      if (currentPending > prevPending) {
+        // Play notification sound
+        playSound('notification');
+        // Optional: Show toast or alert?
+        // alert('Nova empresa cadastrada!'); // Might be annoying
+      }
+      setCompanies(data);
+    });
+    return () => unsubscribe();
+  }, []); // Run ONCE on mount to ensure we always get updates (even if on Dashboard tab)
 
   // Dashboard Date Filter
   const [startDate, setStartDate] = useState('');
@@ -1299,7 +1456,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
       r.passenger.name,
       `"${r.origin}"`,
       `"${r.destination}"`,
-      r.price.toFixed(2),
+      (r.price || 0).toFixed(2),
       r.status,
       new Date(r.createdAt).toLocaleDateString()
     ]);
@@ -1541,7 +1698,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
     }, assignDelay);
 
     // Show success and reset form (but keep dispatch animation visible)
-    alert(`🎉 Chamada criada!\n\nProtocolo: ${newCall.protocol}\nCliente: ${simUser.name}\nValor: R$ ${finalPrice.toFixed(2)}`);
+    alert(`🎉 Chamada criada!\n\nProtocolo: ${newCall.protocol}\nCliente: ${simUser.name}\nValor: R$ ${(finalPrice || 0).toFixed(2)}`);
     resetSimulation();
   };
 
@@ -1668,7 +1825,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                   </div>
                   {selectedOccurrence.amount && (
                     <div className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 text-xs font-bold">
-                      Valor: R$ {selectedOccurrence.amount.toFixed(2)}
+                      Valor: R$ {(selectedOccurrence?.amount || 0).toFixed(2)}
                     </div>
                   )}
                 </div>
@@ -2179,56 +2336,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
               <RefreshCcw size={20} className={isRefreshing ? 'animate-spin text-orange-500' : ''} />
             </button>
 
-            {/* --- COMPANIES TAB CONTENT --- */}
-            {activeTab === 'companies' && (
-              <div className="fixed inset-0 top-16 left-64 z-10 bg-gray-100 p-8 overflow-y-auto transform transition-all duration-300">
-                <div className="flex justify-between items-center mb-6">
-                  <div>
-                    <h2 className="text-2xl font-bold text-gray-800">Gestão de Empresas Parceiras</h2>
-                    <p className="text-gray-500">Gerencie clientes corporativos e limites de crédito.</p>
-                  </div>
-                  <Button onClick={() => { setEditingCompany(null); setShowCompanyModal(true); }}><Plus size={20} /> Nova Empresa</Button>
-                </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {companies.map(company => (
-                    <div key={company.id} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition">
-                      <div className="flex justify-between items-start mb-4">
-                        <div className="flex items-center gap-3">
-                          <div className="bg-blue-100 p-3 rounded-xl text-blue-600">
-                            <Building2 size={24} />
-                          </div>
-                          <div>
-                            <h3 className="font-bold text-lg text-gray-900">{company.name}</h3>
-                            <p className="text-sm text-gray-500">{company.cnpj}</p>
-                          </div>
-                        </div>
-                        <Badge color={company.usedCredit > company.creditLimit * 0.9 ? 'red' : 'green'}>{company.usedCredit > company.creditLimit * 0.9 ? 'Limite Crítico' : 'Ativo'}</Badge>
-                      </div>
-
-                      <div className="space-y-3 mb-6">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-500">Limite de Crédito</span>
-                          <span className="font-bold">R$ {company.creditLimit.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-500">Utilizado</span>
-                          <span className="font-bold text-gray-800">R$ {company.usedCredit.toFixed(2)}</span>
-                        </div>
-                        <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-                          <div className="bg-blue-600 h-full rounded-full" style={{ width: `${(company.usedCredit / company.creditLimit) * 100}%` }}></div>
-                        </div>
-                      </div>
-
-                      <div className="flex gap-3">
-                        <Button fullWidth variant="outline" onClick={() => { setEditingCompany(company); setShowCompanyModal(true); }}>Editar</Button>
-                        <Button fullWidth onClick={() => setViewingCompanyId(company.id)}>Ver Painel</Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {/* Notifications Bell */}
             <div className="flex items-center gap-3">
@@ -2375,7 +2483,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                   <div className="flex justify-between items-start">
                     <div>
                       <p className="text-gray-500 text-sm font-medium">Receita Total</p>
-                      <h3 className="text-3xl font-bold text-gray-900 mt-1">R$ {safeData.stats.revenue.toFixed(2)}</h3>
+                      <h3 className="text-3xl font-bold text-gray-900 mt-1">R$ {(safeData.stats.revenue || 0).toFixed(2)}</h3>
                     </div>
                     <div className="bg-blue-100 p-2 rounded-lg text-blue-600">
                       <DollarSign />
@@ -2502,7 +2610,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                                     ride.status === 'in_progress' ? 'Em andamento' : 'Pendente'}
                               </Badge>
                             </td>
-                            <td className="p-4 font-bold text-gray-900">R$ {ride.price?.toFixed(2)}</td>
+                            <td className="p-4 font-bold text-gray-900">R$ {(ride.price || 0).toFixed(2)}</td>
                             <td className="p-4 text-xs text-gray-400">
                               {ride.createdAt ? new Date(ride.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}
                             </td>
@@ -3062,7 +3170,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                                     <div className="mt-1 grid grid-cols-2 gap-x-2 gap-y-1">
                                       <span className="text-gray-500">Destino:</span> <span className="font-medium text-gray-800 truncate">{(occurrence as any).originalTicket.rideDetails.destination}</span>
                                       <span className="text-gray-500">Data:</span> <span className="font-medium text-gray-800">{new Date((occurrence as any).originalTicket.rideDetails.date).toLocaleDateString('pt-BR')}</span>
-                                      <span className="text-gray-500">Valor:</span> <span className="font-medium text-green-600">R$ {(occurrence as any).originalTicket.rideDetails.price.toFixed(2)}</span>
+                                      <span className="text-gray-500">Valor:</span> <span className="font-medium text-green-600">R$ {((occurrence as any).originalTicket?.rideDetails?.price || 0).toFixed(2)}</span>
                                     </div>
                                   </div>
                                 )}
@@ -3121,6 +3229,132 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                     )}
                 </div>
               </Card>
+            </div>
+          ) : activeTab === 'companies' ? (
+            <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
+              {viewingCompanyId ? (
+                <CompanyDashboard
+                  companyId={viewingCompanyId}
+                  onBack={() => setViewingCompanyId(null)}
+                />
+              ) : (
+                <>
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h2 className="text-2xl font-bold text-gray-800">Gestão de Empresas Parceiras</h2>
+                      <p className="text-gray-500 text-sm">Gerencie clientes corporativos e limites de crédito.</p>
+                    </div>
+                    <Button onClick={() => { setEditingCompany(null); setShowCompanyModal(true); }}>
+                      <Plus size={18} className="mr-2" />
+                      Nova Empresa
+                    </Button>
+                  </div>
+
+                  {/* Stats Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <Card className="p-4 border-l-4 border-blue-500">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                          <Building2 size={20} className="text-blue-600" />
+                        </div>
+                        <div>
+                          <p className="text-2xl font-bold text-gray-900">{companies.length}</p>
+                          <p className="text-xs text-gray-500">Total de Empresas</p>
+                        </div>
+                      </div>
+                    </Card>
+                    <Card className="p-4 border-l-4 border-green-500">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                          <CheckCircle size={20} className="text-green-600" />
+                        </div>
+                        <div>
+                          <p className="text-2xl font-bold text-gray-900">{companies.filter(c => c.status === 'active').length}</p>
+                          <p className="text-xs text-gray-500">Ativas</p>
+                        </div>
+                      </div>
+                    </Card>
+                    <Card className="p-4 border-l-4 border-yellow-500">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center">
+                          <Clock size={20} className="text-yellow-600" />
+                        </div>
+                        <div>
+                          <p className="text-2xl font-bold text-gray-900">{companies.filter(c => c.status === 'pending').length}</p>
+                          <p className="text-xs text-gray-500">Aguardando Análise</p>
+                        </div>
+                      </div>
+                    </Card>
+                    <Card className="p-4 border-l-4 border-red-500">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                          <AlertCircle size={20} className="text-red-600" />
+                        </div>
+                        <div>
+                          <p className="text-2xl font-bold text-gray-900">{companies.filter(c => c.status === 'blocked').length}</p>
+                          <p className="text-xs text-gray-500">Bloqueadas</p>
+                        </div>
+                      </div>
+                    </Card>
+                  </div>
+
+                  {/* Table */}
+                  <Card className="p-0 overflow-hidden">
+                    <table className="w-full text-left text-sm text-gray-600">
+                      <thead className="bg-gray-50 text-gray-900 border-b border-gray-100">
+                        <tr>
+                          <th className="p-4">Empresa</th>
+                          <th className="p-4">CNPJ</th>
+                          <th className="p-4">Status</th>
+                          <th className="p-4 text-right">Crédito Utilizado</th>
+                          <th className="p-4 text-right">Ações</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {companies.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="p-8 text-center text-gray-400">Nenhuma empresa cadastrada.</td>
+                          </tr>
+                        ) : (
+                          companies.map(company => (
+                            <tr key={company.id} className="hover:bg-gray-50">
+                              <td className="p-4 font-medium text-gray-900 flex items-center gap-3">
+                                <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center overflow-hidden">
+                                  {company.logoUrl ? <img src={company.logoUrl} className="w-full h-full object-cover" /> : <Building2 size={16} />}
+                                </div>
+                                <div>
+                                  <p>{company.name}</p>
+                                  <p className="text-xs text-gray-400">{company.email}</p>
+                                </div>
+                              </td>
+                              <td className="p-4">{company.cnpj}</td>
+                              <td className="p-4">
+                                <Badge color={company.status === 'active' ? 'green' : company.status === 'blocked' ? 'red' : 'yellow'}>
+                                  {company.status === 'active' ? 'Ativo' : company.status === 'blocked' ? 'Bloqueado' : 'Pendente'}
+                                </Badge>
+                              </td>
+                              <td className="p-4 text-right">
+                                <div className="flex flex-col items-end">
+                                  <span className="font-bold">R$ {company.usedCredit?.toFixed(2) || '0.00'}</span>
+                                  <span className="text-xs text-gray-400">de R$ {company.creditLimit?.toFixed(2) || '0.00'}</span>
+                                </div>
+                              </td>
+                              <td className="p-4 text-right flex justify-end gap-2">
+                                <Button variant="outline" className="text-xs h-8 px-2" onClick={() => setViewingCompanyId(company.id)}>
+                                  Painel
+                                </Button>
+                                <Button variant="secondary" className="text-xs h-8 px-2" onClick={() => { setEditingCompany(company); setShowCompanyModal(true); }}>
+                                  <Edit2 size={14} />
+                                </Button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </Card>
+                </>
+              )}
             </div>
           ) : activeTab === 'reports' ? (
             <div className="max-w-4xl mx-auto animate-fade-in">
@@ -3528,7 +3762,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
 
                       {simServiceType === 'ride' ? (
                         <div className="mt-2">
-                          <h2 className="text-4xl font-black mb-1">R$ {simResult.price.moto.toFixed(2)}</h2>
+                          <h2 className="text-4xl font-black mb-1">R$ {(simResult?.price?.moto || 0).toFixed(2)}</h2>
                           <p className="text-sm opacity-60">Mototaxi</p>
                         </div>
                       ) : (
@@ -3540,7 +3774,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                           >
                             <div className="flex flex-col items-center">
                               <Bike size={24} className="text-orange-500 mb-2" />
-                              <h3 className="text-2xl font-bold">R$ {simResult.price.moto.toFixed(2)}</h3>
+                              <h3 className="text-2xl font-bold">R$ {(simResult?.price?.moto || 0).toFixed(2)}</h3>
                               <p className="text-xs text-gray-400">Entrega Moto</p>
                             </div>
                           </div>
@@ -3559,7 +3793,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                                 </>
                               ) : (
                                 <>
-                                  <h3 className="text-2xl font-bold">R$ {simResult.price.bike.toFixed(2)}</h3>
+                                  <h3 className="text-2xl font-bold">R$ {(simResult?.price?.bike || 0).toFixed(2)}</h3>
                                   <p className="text-xs text-gray-400">Entrega Bike</p>
                                 </>
                               )}
@@ -3701,7 +3935,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                                 <p className="text-sm text-gray-500">{call.client.phone}</p>
                               </div>
                               <div className="text-right">
-                                <p className="text-xl font-bold text-green-600">R$ {call.price.toFixed(2)}</p>
+                                <p className="text-xl font-bold text-green-600">R$ {(call.price || 0).toFixed(2)}</p>
                                 <p className="text-xs text-gray-400">{call.distance}km • {call.duration}min</p>
                               </div>
                             </div>
@@ -4492,7 +4726,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
         </div>
       </div >
 
-      {showCompanyModal && <CompanyFormModal company={editingCompany} onClose={() => setShowCompanyModal(false)} onSave={handleSaveCompany} />}
+      {showCompanyModal && <CompanyFormModal company={editingCompany} onClose={() => setShowCompanyModal(false)} onSave={handleSaveCompany} onDelete={handleDeleteCompany} />}
       {viewDriver && <DriverDetailModal driver={viewDriver} onClose={() => setViewDriver(null)} />}
       {viewUser && <UserDetailModal user={viewUser} rides={safeData.recentRides} onClose={() => setViewUser(null)} />}
       {showAddDriver && <AddDriverModal onClose={() => setShowAddDriver(false)} />}
@@ -4968,6 +5202,16 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
               </div>
             </div>
           </div>
+        )
+      }
+      {
+        showCompanyModal && (
+          <CompanyFormModal
+            company={editingCompany}
+            onClose={() => setShowCompanyModal(false)}
+            onSave={handleSaveCompany}
+            onDelete={handleDeleteCompany}
+          />
         )
       }
     </div >

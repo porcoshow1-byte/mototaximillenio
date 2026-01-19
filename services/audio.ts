@@ -29,6 +29,7 @@ type SoundType =
     | 'rideStarted'     // Corrida iniciada
     | 'payment'         // Pagamento confirmado
     | 'error'           // Erro/problema
+    | 'notification'    // Notificação genérica (admin)
     | 'click';          // Click suave para feedback
 
 interface SoundConfig {
@@ -114,6 +115,13 @@ const soundConfigs: Record<SoundType, SoundConfig> = {
     },
 
     // Click - feedback tátil
+    notification: {
+        frequencies: [659, 880], // E5, A5
+        durations: [100, 200],
+        type: 'sine',
+        volume: 0.25,
+        delay: 60
+    },
     click: {
         frequencies: [1200],
         durations: [30],

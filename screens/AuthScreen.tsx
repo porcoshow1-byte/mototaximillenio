@@ -38,9 +38,14 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
   const [state, setState] = useState('');
   const [financialManager, setFinancialManager] = useState('');
   const [contractFile, setContractFile] = useState<File | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [tradeName, setTradeName] = useState('');
+  const [stateInscription, setStateInscription] = useState('');
+  const [financialPhone, setFinancialPhone] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [registrationSuccess, setRegistrationSuccess] = useState(false);
 
   /* Forgot Password State */
   const [showForgotPass, setShowForgotPass] = useState(false);
@@ -76,6 +81,7 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
 
     try {
       let finalEmail = email;
+      let companyForLogin: any = null;
 
       // Handle CNPJ Login Lookup
       if (isLogin && role === 'company' && !email.includes('@')) {
@@ -84,14 +90,69 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
         const found = companies.find(c => c.cnpj.replace(/\D/g, '') === email.replace(/\D/g, ''));
         if (found) {
           finalEmail = found.email;
+          companyForLogin = found;
         } else {
           throw new Error('Empresa não encontrada com este CNPJ.');
+        }
+      }
+
+      // For company logins, validate password against stored company record (mock mode)
+      if (isLogin && role === 'company') {
+        const companies = getMockCompanies();
+        const company = companyForLogin || companies.find(c => c.email === finalEmail);
+
+        if (company) {
+          // Check if company has a stored password hash and validate
+          if (company.passwordHash && company.passwordHash !== password) {
+            throw new Error('Senha incorreta. Verifique suas credenciais.');
+          }
         }
       }
 
       let userCredential;
       if (isLogin) {
         userCredential = await login(finalEmail, password);
+
+        // Security Check for Companies
+        if (role === 'company') {
+          try {
+            // Use getCompanyByOwner to find company linked to this user
+            const { getCompanyByOwner } = await import('../services/company');
+            const compData = await getCompanyByOwner(userCredential.user.uid);
+
+            if (!compData) {
+              // No company found for this user
+              const { logout } = await import('../services/auth');
+              await logout();
+              throw new Error('Empresa não encontrada. Verifique suas credenciais ou cadastre-se.');
+            }
+
+            if (compData.status === 'blocked') {
+              const { logout } = await import('../services/auth');
+              await logout();
+              throw new Error('Acesso bloqueado. Entre em contato com o suporte.');
+            }
+            if (compData.status === 'pending') {
+              const { logout } = await import('../services/auth');
+              await logout();
+              throw new Error('Cadastro em análise. Aguarde a aprovação.');
+            }
+            if (compData.isTempPassword) {
+              // Store flag for password reset modal
+              localStorage.setItem('motoja_needs_password_reset', 'true');
+              localStorage.setItem('motoja_company_id', compData.id);
+              alert('AVISO: Você está utilizando uma senha temporária. Por favor, altere sua senha.');
+            }
+          } catch (checkErr: any) {
+            // Propagate our specific errors
+            if (checkErr.message.includes('bloqueado') ||
+              checkErr.message.includes('análise') ||
+              checkErr.message.includes('não encontrada')) {
+              throw checkErr;
+            }
+            console.error('Company check error:', checkErr);
+          }
+        }
       } else {
         userCredential = await register(email, password);
       }
@@ -121,6 +182,17 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
         }
       }
 
+      let logoUrl = '';
+      if (!isLogin && role === 'company' && logoFile && storage) {
+        try {
+          const storageRef = ref(storage, `companies/${uid || Date.now()}_logo.png`);
+          await uploadBytes(storageRef, logoFile);
+          logoUrl = await getDownloadURL(storageRef);
+        } catch (uploadError) {
+          console.error("Logo upload failed", uploadError);
+        }
+      }
+
       // Profile / Company Creation
       if (userCredential.user) {
         if (role === 'company') {
@@ -128,19 +200,28 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
           const newCompany: Company = {
             id: uid || `comp_${Date.now()}`,
             name: name,
+            tradeName: tradeName, // New
             cnpj: cnpj,
+            stateInscription: stateInscription, // New
             email: email,
             status: 'pending',
             address: `${street}, ${number} ${complement ? '(' + complement + ')' : ''}, ${neighborhood} - ${city}/${state} - CEP: ${cep}`,
+            addressComponents: { street, number, neighborhood, city, state, cep, complement }, // New: Structured Address
             creditLimit: 0,
             usedCredit: 0,
             financialManager: financialManager,
+            financialManagerPhone: financialPhone, // New
             phone: phone,
             contractUrl: contractUrl,
-            ownerUid: uid
+            logoUrl: logoUrl, // New
+            ownerUid: uid,
+            isTempPassword: false
           };
           await saveCompany(newCompany);
-          alert('Cadastro realizado! Sua empresa está em análise.');
+          // Show Success View instead of alerting and redirecting
+          setLoading(false);
+          setRegistrationSuccess(true);
+          return; // STOP here. Do not onLoginSuccess()
         } else {
           // Standard User/Driver Profile
           await getOrCreateUserProfile(
@@ -247,22 +328,37 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
         <div className={`w-full max-w-md bg-white lg:bg-transparent p-6 lg:p-0 rounded-2xl shadow-xl lg:shadow-none relative z-10 ${role === 'admin' && getSettings().visual?.mobileBackgroundImage ? 'bg-white/85 backdrop-blur-md lg:bg-transparent lg:backdrop-blur-none p-8' : ''}`}>
 
           {/* Header */}
-          <div className="text-center lg:text-left mb-8">
-            <button onClick={onBack} className="lg:hidden mb-6 text-gray-500 hover:text-gray-900 flex items-center gap-2 text-sm font-medium">
-              &larr; Voltar
-            </button>
+          {registrationSuccess ? (
+            <div className="text-center animate-fade-in py-8">
+              <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <CheckCircle size={40} className="text-green-600" />
+              </div>
+              <h2 className="text-3xl font-bold text-gray-900 mb-4">Cadastro em Análise!</h2>
+              <p className="text-gray-600 mb-8 max-w-sm mx-auto">
+                Suas informações foram recebidas com sucesso. Nossa equipe irá analisar os documentos e você será notificado por e-mail assim que o cadastro for aprovado.
+              </p>
+              <Button onClick={() => { setRegistrationSuccess(false); setIsLogin(true); window.location.reload(); }} fullWidth>
+                Voltar para Login
+              </Button>
+            </div>
+          ) : (
+            <div className="text-center lg:text-left mb-8">
+              <button onClick={onBack} className="lg:hidden mb-6 text-gray-500 hover:text-gray-900 flex items-center gap-2 text-sm font-medium">
+                &larr; Voltar
+              </button>
 
-            <h2 className="text-3xl font-bold text-gray-900 mb-2">
-              {isLogin ? 'Bem-vindo de volta' : 'Crie sua conta'}
-            </h2>
-            <p className="text-gray-500">
-              Acesso para <span className={`font-bold uppercase ${roleInfo.color}`}>
-                {roleInfo.label}
-              </span>
-            </p>
-          </div>
+              <h2 className="text-3xl font-bold text-gray-900 mb-2">
+                {isLogin ? 'Bem-vindo de volta' : 'Crie sua conta'}
+              </h2>
+              <p className="text-gray-500">
+                Acesso para <span className={`font-bold uppercase ${roleInfo.color}`}>
+                  {roleInfo.label}
+                </span>
+              </p>
+            </div>
+          )}
 
-          {error && (
+          {!registrationSuccess && error && (
             <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded-lg flex items-start gap-3 animate-head-shake mb-6">
               <AlertCircle size={20} className="mt-0.5 flex-shrink-0" />
               <p className="text-sm font-medium">{error}</p>
@@ -311,7 +407,19 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
                 {role === 'company' && (
                   <div className="space-y-4 pt-2 border-t border-gray-100">
                     <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Dados da Empresa</p>
+
+                    {/* Logo Upload */}
+                    <div className="border-2 border-dashed border-gray-300 rounded-xl p-4 text-center hover:bg-gray-50 transition cursor-pointer relative group">
+                      <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => setLogoFile(e.target.files?.[0] || null)} accept="image/*" />
+                      <div className="flex flex-col items-center gap-2 text-gray-500 group-hover:text-blue-600 transition-colors">
+                        {logoFile ? <span className="text-green-600 font-bold flex items-center gap-2"><CheckCircle size={16} /> {logoFile.name}</span> : <><Camera size={24} /> <span>Logomarca da Empresa</span></>}
+                      </div>
+                    </div>
+
                     <Input label="CNPJ" value={cnpj} onChange={(e) => setCnpj(e.target.value)} placeholder="00.000.000/0001-00" icon={<FileText size={18} />} />
+                    <Input label="Inscrição Estadual" value={stateInscription} onChange={(e) => setStateInscription(e.target.value)} placeholder="000.000.000.000" />
+                    <Input label="Nome Fantasia" value={tradeName} onChange={(e) => setTradeName(e.target.value)} placeholder="Nome Comercial" icon={<Building2 size={18} />} />
+
                     <div className="grid grid-cols-2 gap-4">
                       <Input label="CEP" value={cep} onChange={(e) => {
                         const newCep = e.target.value;
@@ -331,12 +439,22 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
                       }} placeholder="00000-000" />
                       <Input label="Número" value={number} onChange={(e) => setNumber(e.target.value)} placeholder="123" />
                     </div>
-                    <Input label="Endereço" value={street} onChange={(e) => setStreet(e.target.value)} placeholder="Rua..." disabled={!street} />
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="col-span-2">
+                        <Input label="Endereço" value={street} onChange={(e) => setStreet(e.target.value)} placeholder="Rua..." disabled={!street} />
+                      </div>
+                      <div>
+                        <Input label="Complemento" value={complement} onChange={(e) => setComplement(e.target.value)} placeholder="Apto..." />
+                      </div>
+                    </div>
                     <div className="grid grid-cols-2 gap-4">
                       <Input label="Bairro" value={neighborhood} onChange={(e) => setNeighborhood(e.target.value)} placeholder="Bairro" />
                       <Input label="Cidade/UF" value={`${city}/${state}`} onChange={() => { }} placeholder="Cidade - UF" disabled />
                     </div>
+
                     <Input label="Gestor Financeiro" value={financialManager} onChange={(e) => setFinancialManager(e.target.value)} placeholder="Nome do responsável" icon={<User size={18} />} />
+                    <Input label="Telefone do Gestor" value={financialPhone} onChange={(e) => setFinancialPhone(e.target.value)} placeholder="(11) 99999-9999" icon={<Phone size={18} />} />
+
                     <div className="border-2 border-dashed border-gray-300 rounded-xl p-4 text-center hover:bg-gray-50 transition cursor-pointer relative group">
                       <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => setContractFile(e.target.files?.[0] || null)} accept=".pdf,.img,.jpg" />
                       <div className="flex flex-col items-center gap-2 text-gray-500 group-hover:text-blue-600 transition-colors">
@@ -349,56 +467,60 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
             )}
 
             {/* Email & Password (Always Visible) */}
-            <div className="space-y-4">
-              <Input
-                label={role === 'company' && isLogin ? "E-mail ou CNPJ" : "E-mail de Acesso"}
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder={role === 'company' && isLogin ? "seu@email.com ou CNPJ" : "seu@email.com"}
-                type={!isLogin && role === 'company' ? 'email' : 'text'}
-              // icon={<User size={18} />}
-              />
+            {!registrationSuccess && (
+              <>
+                <div className="space-y-4">
+                  <Input
+                    label={role === 'company' && isLogin ? "E-mail ou CNPJ" : "E-mail de Acesso"}
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder={role === 'company' && isLogin ? "seu@email.com ou CNPJ" : "seu@email.com"}
+                    type={!isLogin && role === 'company' ? 'email' : 'text'}
+                  // icon={<User size={18} />}
+                  />
 
-              <div>
-                <Input
-                  label="Senha"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="******"
-                  type="password"
-                // icon={<Lock size={18} />}
-                />
-                {isLogin && (
-                  <div className="flex justify-end mt-1">
-                    <button onClick={() => setShowForgotPass(true)} className="text-xs font-medium text-gray-500 hover:text-orange-600 transition-colors">
-                      Esqueceu a senha?
-                    </button>
+                  <div>
+                    <Input
+                      label="Senha"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="******"
+                      type="password"
+                    // icon={<Lock size={18} />}
+                    />
+                    {isLogin && (
+                      <div className="flex justify-end mt-1">
+                        <button onClick={() => setShowForgotPass(true)} className="text-xs font-medium text-gray-500 hover:text-orange-600 transition-colors">
+                          Esqueceu a senha?
+                        </button>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
 
-              {!isLogin && (
-                <Input
-                  label="Confirmar Senha"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="******"
-                  type="password"
-                />
-              )}
-            </div>
+                  {!isLogin && (
+                    <Input
+                      label="Confirmar Senha"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="******"
+                      type="password"
+                    />
+                  )}
+                </div>
 
-            <Button
-              onClick={handleAuth}
-              isLoading={loading}
-              className={`w-full py-3 text-lg font-bold shadow-lg shadow-orange-500/20 ${role === 'admin' ? 'text-white' : ''}`}
-              style={role === 'admin' && getSettings().visual?.primaryColor ? { backgroundColor: getSettings().visual!.primaryColor, borderColor: getSettings().visual!.primaryColor } : {}}
-            >
-              {isLogin ? 'Entrar na Plataforma' : 'Finalizar Cadastro'}
-            </Button>
+                <Button
+                  onClick={handleAuth}
+                  isLoading={loading}
+                  className={`w-full py-3 text-lg font-bold shadow-lg shadow-orange-500/20 ${role === 'admin' ? 'text-white' : ''}`}
+                  style={role === 'admin' && getSettings().visual?.primaryColor ? { backgroundColor: getSettings().visual!.primaryColor, borderColor: getSettings().visual!.primaryColor } : {}}
+                >
+                  {isLogin ? 'Entrar na Plataforma' : 'Finalizar Cadastro'}
+                </Button>
+              </>
+            )}
 
             {/* Toggle Login/Register - HIDE FOR ADMIN */}
-            {role !== 'admin' && (
+            {role !== 'admin' && !registrationSuccess && (
               <div className="text-center pt-4">
                 <p className="text-gray-500 text-sm">
                   {isLogin ? 'Ainda não tem conta?' : 'Já possui cadastro?'}
@@ -427,19 +549,21 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
       </div>
 
       {/* Forgot Password Modal */}
-      {showForgotPass && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-8 w-full max-w-sm animate-scale-up shadow-2xl">
-            <h3 className="text-xl font-bold mb-2 text-gray-900">Recuperar Acesso</h3>
-            <p className="text-gray-500 text-sm mb-6">Digite seu email para receber o link de redefinição de senha.</p>
-            <Input value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} placeholder="seu@email.com" className="mb-6" />
-            <div className="flex gap-3">
-              <Button variant="outline" onClick={() => setShowForgotPass(false)} fullWidth>Cancelar</Button>
-              <Button onClick={handleForgotPassword} fullWidth>Enviar Link</Button>
+      {
+        showForgotPass && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl p-8 w-full max-w-sm animate-scale-up shadow-2xl">
+              <h3 className="text-xl font-bold mb-2 text-gray-900">Recuperar Acesso</h3>
+              <p className="text-gray-500 text-sm mb-6">Digite seu email para receber o link de redefinição de senha.</p>
+              <Input value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} placeholder="seu@email.com" className="mb-6" />
+              <div className="flex gap-3">
+                <Button variant="outline" onClick={() => setShowForgotPass(false)} fullWidth>Cancelar</Button>
+                <Button onClick={handleForgotPassword} fullWidth>Enviar Link</Button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+    </div >
   );
 };

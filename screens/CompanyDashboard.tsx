@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { getCompany, updateCompanyStatus, getCompanyByOwner } from '../services/company';
+import { getCompany, updateCompanyStatus, getCompanyByOwner, saveCompany } from '../services/company';
 import { getRideHistory, injectMockCorporateRides } from '../services/ride';
 import { generateInvoicePayment } from '../services/billing';
 import { Company, RideRequest } from '../types';
@@ -8,7 +8,7 @@ import { Button, Card, Badge, Input } from '../components/UI';
 import {
     Building2, Users, CreditCard, Calendar, ArrowLeft,
     TrendingUp, Download, Search, CheckCircle, Clock, AlertCircle, Plus, X,
-    FileText, AlertTriangle, ChevronDown, ChevronUp, History
+    FileText, AlertTriangle, ChevronDown, ChevronUp, History, Lock
 } from 'lucide-react';
 
 export const CompanyDashboard = ({ onBack, companyId }: { onBack: () => void, companyId?: string }) => {
@@ -20,6 +20,12 @@ export const CompanyDashboard = ({ onBack, companyId }: { onBack: () => void, co
     const [invoicePayment, setInvoicePayment] = useState<any>(null);
     const [showAddCollaborator, setShowAddCollaborator] = useState(false);
     const [newCollaborator, setNewCollaborator] = useState({ name: '', phone: '', email: '', cpf: '' });
+
+    // Password reset state
+    const [showPasswordReset, setShowPasswordReset] = useState(false);
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [savingPassword, setSavingPassword] = useState(false);
 
     const [selectedRide, setSelectedRide] = useState<RideRequest | null>(null);
     const [activeTab, setActiveTab] = useState<'open' | 'history'>('open');
@@ -41,7 +47,7 @@ export const CompanyDashboard = ({ onBack, companyId }: { onBack: () => void, co
         setIsPaying(true);
         // If specific month not provided, mock generic invoice (or handle logic to pay all)
         const invoiceId = monthKey ? `inv_${monthKey.replace(/\s/g, '_')}` : `inv_ALL_${Date.now()}`;
-        const amount = monthRides ? monthRides.reduce((acc, r) => acc + r.price, 0) : openInvoices;
+        const amount = monthRides ? monthRides.reduce((acc, r) => acc + (r.price || 0), 0) : openInvoices;
 
         try {
             const result = await generateInvoicePayment(company.id, invoiceId, amount, company.email);
@@ -98,31 +104,89 @@ export const CompanyDashboard = ({ onBack, companyId }: { onBack: () => void, co
         alert('Fatura baixada manualmente com sucesso!');
     };
 
+    const handlePasswordReset = async () => {
+        if (!company) return;
+
+        if (!newPassword || newPassword.length < 6) {
+            alert('A nova senha deve ter pelo menos 6 caracteres.');
+            return;
+        }
+
+        if (newPassword !== confirmPassword) {
+            alert('As senhas não conferem.');
+            return;
+        }
+
+        setSavingPassword(true);
+        try {
+            const updatedCompany = {
+                ...company,
+                passwordHash: newPassword,
+                isTempPassword: false
+            };
+            await saveCompany(updatedCompany);
+            setCompany(updatedCompany);
+            setShowPasswordReset(false);
+            setNewPassword('');
+            setConfirmPassword('');
+            alert('Senha alterada com sucesso! Use a nova senha no próximo login.');
+        } catch (error) {
+            console.error('Error updating password:', error);
+            alert('Erro ao alterar senha. Tente novamente.');
+        } finally {
+            setSavingPassword(false);
+        }
+    };
+
     useEffect(() => {
         const loadData = async () => {
             try {
                 // Use passed companyId (Admin View) or find company for logged-in user
                 let targetId = companyId;
+                let companyData: Company | null = null;
 
-                if (!targetId && user) {
-                    const userCompany = await getCompanyByOwner(user.uid);
-                    if (userCompany) {
-                        targetId = userCompany.id;
-                    } else {
-                        // Fallback: Check if company ID matches User ID (common in our Mock Auth)
-                        const directCompany = await getCompany(user.uid);
-                        if (directCompany) targetId = directCompany.id;
+                // If companyId was passed directly (admin view), use it
+                if (targetId) {
+                    companyData = await getCompany(targetId);
+                }
+
+                // Otherwise, find company for logged-in user
+                if (!companyData && user) {
+                    console.log('[CompanyDashboard] Looking for company for user:', user.uid, user.email);
+
+                    // Try to find by ownerUid
+                    companyData = await getCompanyByOwner(user.uid);
+
+                    // If not found, try by ID = uid
+                    if (!companyData) {
+                        companyData = await getCompany(user.uid);
+                    }
+
+                    if (companyData) {
+                        targetId = companyData.id;
                     }
                 }
 
-                // Fallback to '1' only if still undefined (Demo Mode)
-                if (!targetId) targetId = '1';
+                // If still no company found, show error (don't use fake fallback)
+                if (!companyData) {
+                    console.error('[CompanyDashboard] No company found for user');
+                    setCompany(null);
+                    setLoading(false);
+                    return;
+                }
+
+                setCompany(companyData);
+                targetId = companyData.id;
+
+                // Check if company needs to reset password
+                if (companyData.isTempPassword) {
+                    setShowPasswordReset(true);
+                    // Clear the localStorage flag
+                    localStorage.removeItem('motoja_needs_password_reset');
+                }
 
                 // Inject mock corporate rides if needed
-                injectMockCorporateRides(targetId);
-
-                const companyData = await getCompany(targetId);
-                setCompany(companyData);
+                injectMockCorporateRides(targetId!);
 
                 // Mock rides for demo purposes
                 const storedRides = JSON.parse(localStorage.getItem('motoja_mock_rides') || '[]');
@@ -197,7 +261,7 @@ export const CompanyDashboard = ({ onBack, companyId }: { onBack: () => void, co
         );
     }
 
-    const totalSpent = rides.reduce((acc, r) => acc + r.price, 0);
+    const totalSpent = rides.reduce((acc, r) => acc + (r.price || 0), 0);
     const openInvoices = totalSpent; // Mock concept: all recent rides are pending invoice
 
     return (
@@ -221,7 +285,7 @@ export const CompanyDashboard = ({ onBack, companyId }: { onBack: () => void, co
                 <div className="flex items-center gap-3">
                     <div className="text-right">
                         <p className="text-xs text-gray-500 font-medium uppercase">Limite de Crédito</p>
-                        <p className="font-bold text-gray-900">R$ {company.creditLimit.toFixed(2)}</p>
+                        <p className="font-bold text-gray-900">R$ {company.creditLimit?.toFixed(2) || '0.00'}</p>
                     </div>
                     <div className="h-8 w-px bg-gray-200 mx-2"></div>
                     <Button variant="outline" className="flex items-center gap-2"><Download size={16} /> Exportar Relatório</Button>
@@ -238,7 +302,7 @@ export const CompanyDashboard = ({ onBack, companyId }: { onBack: () => void, co
                             <Badge color="blue">Mês Atual</Badge>
                         </div>
                         <p className="text-gray-500 text-sm font-medium">Total Gasto</p>
-                        <h3 className="text-3xl font-bold text-gray-900 mt-1">R$ {totalSpent.toFixed(2)}</h3>
+                        <h3 className="text-3xl font-bold text-gray-900 mt-1">R$ {(totalSpent || 0).toFixed(2)}</h3>
                         <p className="text-xs text-gray-400 mt-2">+12% vs mês anterior</p>
                     </Card>
 
@@ -248,7 +312,7 @@ export const CompanyDashboard = ({ onBack, companyId }: { onBack: () => void, co
                             <Badge color="orange">A Vencer</Badge>
                         </div>
                         <p className="text-gray-500 text-sm font-medium">Faturas em Aberto</p>
-                        <h3 className="text-3xl font-bold text-gray-900 mt-1">R$ {openInvoices.toFixed(2)}</h3>
+                        <h3 className="text-3xl font-bold text-gray-900 mt-1">R$ {(openInvoices || 0).toFixed(2)}</h3>
                         <div className="flex justify-between items-center mt-2">
                             <p className="text-xs text-gray-400">Vencimento: 10/06</p>
                             {openInvoices > 0 && (
@@ -299,7 +363,7 @@ export const CompanyDashboard = ({ onBack, companyId }: { onBack: () => void, co
                                     </div>
                                     <div className="text-right">
                                         <p className="text-xs uppercase font-bold tracking-wider opacity-70">Valor Final</p>
-                                        <p className="text-2xl font-bold">R$ {selectedRide.price.toFixed(2)}</p>
+                                        <p className="text-2xl font-bold">R$ {(selectedRide.price || 0).toFixed(2)}</p>
                                     </div>
                                 </div>
 
@@ -446,7 +510,7 @@ export const CompanyDashboard = ({ onBack, companyId }: { onBack: () => void, co
                                         <div className="flex flex-row md:flex-col items-center md:items-end gap-3 md:gap-1 w-full md:w-auto justify-between md:justify-start pl-16 md:pl-0">
                                             <div className="text-right">
                                                 <span className="text-xs font-medium text-gray-400 uppercase tracking-wider block">Total</span>
-                                                <span className="text-xl font-bold text-gray-900 block">R$ {totalMonth.toFixed(2)}</span>
+                                                <span className="text-xl font-bold text-gray-900 block">R$ {(totalMonth || 0).toFixed(2)}</span>
                                             </div>
 
                                             <div className="flex items-center gap-2">
@@ -510,7 +574,7 @@ export const CompanyDashboard = ({ onBack, companyId }: { onBack: () => void, co
                                                             </div>
                                                         </td>
                                                         <td className="px-6 py-3 text-right font-mono text-sm font-medium text-gray-900">
-                                                            R$ {ride.price.toFixed(2)}
+                                                            R$ {(ride.price || 0).toFixed(2)}
                                                         </td>
                                                         <td className="px-6 py-3 text-right">
                                                             <button
@@ -639,6 +703,58 @@ export const CompanyDashboard = ({ onBack, companyId }: { onBack: () => void, co
                                     alert('Colaborador adicionado com sucesso!');
                                     setShowAddCollaborator(false);
                                 }}>Cadastrar</Button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Password Reset Modal */}
+                {showPasswordReset && (
+                    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl animate-scale-in">
+                            <div className="text-center mb-6">
+                                <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <Lock size={32} className="text-orange-600" />
+                                </div>
+                                <h3 className="text-xl font-bold text-gray-900">Redefinir Senha</h3>
+                                <p className="text-gray-500 mt-2">
+                                    Você está utilizando uma senha temporária.
+                                    Por segurança, defina uma nova senha.
+                                </p>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Nova Senha</label>
+                                    <Input
+                                        type="password"
+                                        value={newPassword}
+                                        onChange={(e) => setNewPassword(e.target.value)}
+                                        placeholder="Mínimo 6 caracteres"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Confirmar Senha</label>
+                                    <Input
+                                        type="password"
+                                        value={confirmPassword}
+                                        onChange={(e) => setConfirmPassword(e.target.value)}
+                                        placeholder="Digite novamente"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="mt-6">
+                                <Button
+                                    fullWidth
+                                    onClick={handlePasswordReset}
+                                    disabled={savingPassword || !newPassword || newPassword !== confirmPassword}
+                                >
+                                    {savingPassword ? 'Salvando...' : 'Salvar Nova Senha'}
+                                </Button>
+                                <p className="text-xs text-center text-gray-400 mt-3">
+                                    Sua nova senha será usada para acessar o painel de qualquer dispositivo.
+                                </p>
                             </div>
                         </div>
                     </div>
