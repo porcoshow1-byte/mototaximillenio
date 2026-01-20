@@ -249,35 +249,35 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
       // Profile / Company Creation
       if (userCredential.user) {
         if (role === 'company') {
-          // Create Company Record
-          const newCompany: Company = {
-            id: uid || `comp_${Date.now()}`,
-            name: name,
-            tradeName: tradeName, // New
-            cnpj: cnpj,
-            stateInscription: stateInscription, // New
-            email: email,
-            status: 'pending',
-            address: `${street}, ${number} ${complement ? '(' + complement + ')' : ''}, ${neighborhood} - ${city}/${state} - CEP: ${cep}`,
-            addressComponents: { street, number, neighborhood, city, state, cep, complement }, // New: Structured Address
-            creditLimit: 0,
-            usedCredit: 0,
-            financialManager: financialManager,
-            financialManagerPhone: financialPhone, // New
-            phone: phone,
-            contractUrl: contractUrl,
-            logoUrl: logoUrl, // New
-            ownerUid: uid,
-            isTempPassword: false
-          };
-          await saveCompany(newCompany);
-          // Show Success View instead of alerting and redirecting
-          // Show Success View for ALL roles
-          setLoading(false);
-          setRegistrationSuccess(true);
-          return; // STOP here.
+          if (!isLogin) {
+            // Create Company Record (Only for Registration)
+            const newCompany: Company = {
+              id: uid || `comp_${Date.now()}`,
+              name: name,
+              tradeName: tradeName,
+              cnpj: cnpj,
+              stateInscription: stateInscription,
+              email: email,
+              status: 'pending',
+              address: `${street}, ${number} ${complement ? '(' + complement + ')' : ''}, ${neighborhood} - ${city}/${state} - CEP: ${cep}`,
+              addressComponents: { street, number, neighborhood, city, state, cep, complement },
+              creditLimit: 0,
+              usedCredit: 0,
+              financialManager: financialManager,
+              financialManagerPhone: financialPhone,
+              phone: phone,
+              contractUrl: contractUrl,
+              logoUrl: logoUrl,
+              ownerUid: uid,
+              isTempPassword: false
+            };
+            await saveCompany(newCompany);
+            setLoading(false);
+            setRegistrationSuccess(true);
+            return; // STOP here for registration
+          }
         } else {
-          // Standard User/Driver Profile
+          // Standard User/Driver Profile (Safe for both Login/Register)
           await getOrCreateUserProfile(
             userCredential.user.uid,
             userCredential.user.email || '',
@@ -285,10 +285,11 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
             !isLogin ? { name, phone, cpf, vehicle, plate, cnhUrl } : undefined
           );
 
-          // Also show success screen for users/drivers instead of silent redirect
-          setLoading(false);
-          setRegistrationSuccess(true);
-          return;
+          if (!isLogin) {
+            setLoading(false);
+            setRegistrationSuccess(true);
+            return; // STOP here for registration
+          }
         }
       }
 
@@ -301,6 +302,11 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
           console.log("✅ Nova sessão registrada:", userCredential.user.uid);
         } catch (sessErr) {
           console.error("Erro ao registrar sessão:", sessErr);
+          // Crucial: If session registration fails, we MUST NOT proceed to login,
+          // otherwise validateSession will lock the user out immediately.
+          const { logout } = await import('../services/auth');
+          await logout();
+          throw new Error("Falha ao registrar sessão. Tente novamente.");
         }
       }
 

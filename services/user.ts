@@ -177,7 +177,8 @@ export const registerSession = async (uid: string): Promise<string> => {
   }
 
   const userRef = doc(db, USERS_COLLECTION, uid);
-  await updateDoc(userRef, { activeSessionId: sessionId });
+  // Use setDoc with merge to ensure document exists
+  await setDoc(userRef, { activeSessionId: sessionId }, { merge: true });
   return sessionId;
 };
 

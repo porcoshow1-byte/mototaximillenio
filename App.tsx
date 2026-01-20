@@ -83,10 +83,17 @@ const Main = () => {
     };
 
     // Check immediately and then every 10 seconds
-    checkSession();
+    // Delay initial check to allow registerSession to complete and propagate
+    const initialTimer = setTimeout(() => {
+      checkSession();
+    }, 2000);
+
     const interval = setInterval(checkSession, 10000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(initialTimer);
+      clearInterval(interval);
+    };
   }, [user]);
 
   // 1. Landing Page (Estado Inicial)
