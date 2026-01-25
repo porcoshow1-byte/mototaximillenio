@@ -14,9 +14,7 @@ export const LandingPage = ({ onStartDemo }: { onStartDemo: () => void }) => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-20">
             <div className="flex items-center gap-2">
-              <div className="bg-orange-500 text-white p-2 rounded-lg">
-                <Zap size={24} fill="currentColor" />
-              </div>
+              <img src="/logo-new.jpg" alt="MotoJá" className="h-10 w-10 rounded-lg object-cover" />
               <span className="text-2xl font-bold tracking-tight text-gray-900">
                 Moto<span className="text-orange-500">Já</span>
               </span>

@@ -42,6 +42,12 @@ export interface Company {
     complement?: string;
   };
   isTempPassword?: boolean;
+  passwordHash?: string;
+  settings?: {
+    billingDay: number;
+    autoBlockOverdue: boolean;
+    blockToleranceDays: number;
+  };
 }
 
 export interface User {

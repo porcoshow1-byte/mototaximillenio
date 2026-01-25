@@ -3,6 +3,7 @@ import {
   createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
   onAuthStateChanged,
+  updatePassword,
   User as FirebaseUser
 } from 'firebase/auth';
 import { auth, isMockMode } from './firebase';
@@ -113,4 +114,17 @@ export const logout = async () => {
   const { clearSession } = await import('./user');
   clearSession();
   return firebaseSignOut(auth);
+};
+
+export const updateCurrentUserPassword = async (newPassword: string) => {
+  if (isMockMode || !auth) {
+    if (newPassword.length < 6) throw new Error("A senha deve ter pelo menos 6 caracteres");
+    // In mock mode, we just pretend it worked
+    return;
+  }
+
+  if (auth.currentUser) {
+    return updatePassword(auth.currentUser, newPassword);
+  }
+  throw new Error("Usuário não autenticado");
 };

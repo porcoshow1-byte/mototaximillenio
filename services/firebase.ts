@@ -48,4 +48,10 @@ if (app && !isMockMode) {
   storage = getStorage(app);
 }
 
-export { app, db, auth, storage };
+import { getDatabase, Database } from 'firebase/database';
+let rtdb: Database | undefined;
+if (app && !isMockMode) {
+  rtdb = getDatabase(app);
+}
+
+export { app, db, auth, storage, rtdb };

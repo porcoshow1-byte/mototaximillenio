@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { login, register } from '../services/auth';
 import { getOrCreateUserProfile } from '../services/user';
-import { Button, Input, Card } from '../components/UI';
+import { Button, Input, Card, ConfirmationModal } from '../components/UI';
 import { AlertCircle, User, Phone, Car, MapPin, Camera, Building2, FileText, Upload, CheckCircle } from 'lucide-react';
 import { APP_CONFIG } from '../constants';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -47,6 +47,14 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [registrationSuccess, setRegistrationSuccess] = useState(false);
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => { },
+    variant: 'info' as 'danger' | 'info' | 'success',
+    singleButton: true
+  });
 
   /* Forgot Password State */
   const [showForgotPass, setShowForgotPass] = useState(false);
@@ -107,6 +115,13 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
         if (role === 'company') {
           if (!cnpj.trim()) { setLoading(false); return setError('CNPJ é obrigatório.'); }
 
+          // Algorithmic Validation
+          const { isValidCNPJ, isValidCPF } = await import('../utils/validators');
+          if (!isValidCNPJ(cnpj)) {
+            setLoading(false);
+            return setError('CNPJ inválido. Verifique os números digitados.');
+          }
+
           // Check CNPJ Uniqueness
           const cnpjCheck = await checkUniqueness('cnpj', cnpj);
           if (cnpjCheck.exists) {
@@ -119,7 +134,21 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
           if (!neighborhood.trim()) { setLoading(false); return setError('Bairro é obrigatório.'); }
           if (!city.trim() || !state.trim()) { setLoading(false); return setError('Cidade e Estado são obrigatórios (Preencha via CEP).'); }
           if (!cep.trim()) { setLoading(false); return setError('CEP é obrigatório.'); }
-          if (!financialManager.trim()) { setLoading(false); return setError('Gestor Financeiro é obrigatório.'); }
+          if (!financialManager.trim()) { setLoading(false); return setError('Responsável pela empresa é obrigatório.'); }
+          // Company CPF Check
+          if (!cpf.trim()) { setLoading(false); return setError('CPF do responsável é obrigatório.'); }
+
+          if (!isValidCPF(cpf)) {
+            setLoading(false);
+            return setError('CPF do responsável inválido.');
+          }
+
+          const cpfCheck = await checkUniqueness('cpf', cpf);
+          if (cpfCheck.exists) {
+            setLoading(false);
+            return setError(cpfCheck.message || 'CPF do responsável já cadastrado.');
+          }
+
           if (!contractFile) { setLoading(false); return setError('Contrato Social é obrigatório.'); }
         }
       } catch (e) {
@@ -136,35 +165,56 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
       let finalEmail = email;
       let companyForLogin: any = null;
 
-      // Handle CNPJ Login Lookup
-      if (isLogin && role === 'company' && !email.includes('@')) {
-        // Assume user typed CNPJ, try to find email
-        const companies = getMockCompanies();
-        const found = companies.find(c => c.cnpj.replace(/\D/g, '') === email.replace(/\D/g, ''));
-        if (found) {
-          finalEmail = found.email;
-          companyForLogin = found;
-        } else {
-          throw new Error('Empresa não encontrada com este CNPJ.');
-        }
-      }
-
-      // For company logins, validate password against stored company record (mock mode)
+      // Handle CNPJ/Email Lookup
       if (isLogin && role === 'company') {
-        const companies = getMockCompanies();
-        const company = companyForLogin || companies.find(c => c.email === finalEmail);
+        const { findCompanyByIdentifier } = await import('../services/company');
+        const company = await findCompanyByIdentifier(email); // email here acts as identifier (email or cnpj)
 
         if (company) {
-          // Check if company has a stored password hash and validate
-          if (company.passwordHash && company.passwordHash !== password) {
-            throw new Error('Senha incorreta. Verifique suas credenciais.');
-          }
+          finalEmail = company.email;
+          companyForLogin = company;
+          // REMOVED: Pre-login Hash Check. We trust Firebase Auth first, then sync.
+        } else if (!email.includes('@')) {
+          // If user typed a CNPJ and we didn't find it
+          throw new Error('Empresa não encontrada com este CNPJ.');
         }
       }
 
       let userCredential;
       if (isLogin) {
-        userCredential = await login(finalEmail, password);
+        try {
+          userCredential = await login(finalEmail, password);
+
+          // --- Post-Login Sync & Validation ---
+          if (role === 'company' && companyForLogin) {
+            // If we logged in successfully, but the stored hash doesn't match, 
+            // it means the password was changed differently (or just desynced). 
+            // We update the hash to match the working password.
+            if (companyForLogin.passwordHash && companyForLogin.passwordHash !== password) {
+              const { saveCompany } = await import('../services/company');
+              await saveCompany({ ...companyForLogin, passwordHash: password });
+              console.log('[Auth] Password Hash Synced with Firebase Auth');
+            }
+          }
+
+        } catch (loginErr: any) {
+          // Special Case: Admin-created company (Firestore record exists, but no Firebase Auth User yet)
+          if (role === 'company' && companyForLogin && companyForLogin.passwordHash === password && loginErr.code === 'auth/user-not-found') {
+            console.log('[Auth] Admin-created company login attempt. Registering new Auth User...');
+            // Auto-register the user to "claim" the account
+            userCredential = await register(finalEmail, password);
+
+            // We MUST link this new UID to the existing company record
+            if (userCredential.user) {
+              const { saveCompany } = await import('../services/company');
+              const updatedComp = { ...companyForLogin, ownerUid: userCredential.user.uid };
+              await saveCompany(updatedComp);
+              console.log('[Auth] Company linked to new Auth User:', updatedComp.id);
+            }
+          } else {
+            throw loginErr;
+          }
+        }
 
         // Security Check for Companies
         if (role === 'company') {
@@ -194,7 +244,6 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
               // Store flag for password reset modal
               localStorage.setItem('motoja_needs_password_reset', 'true');
               localStorage.setItem('motoja_company_id', compData.id);
-              alert('AVISO: Você está utilizando uma senha temporária. Por favor, altere sua senha.');
             }
           } catch (checkErr: any) {
             // Propagate our specific errors
@@ -328,13 +377,32 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
   };
 
   const handleForgotPassword = async () => {
-    if (!forgotEmail) return alert('Digite seu e-mail para recuperar a senha.');
+    if (!forgotEmail) {
+      setConfirmModal({
+        isOpen: true,
+        title: 'Campo Obrigatório',
+        message: 'Digite seu e-mail para recuperar a senha.',
+        variant: 'info',
+        singleButton: true,
+        onConfirm: () => setConfirmModal(prev => ({ ...prev, isOpen: false }))
+      });
+      return;
+    }
     setLoading(true);
     // Simulate Password Reset
     await new Promise(r => setTimeout(r, 1500));
-    alert(`Um link de redefinição de senha foi enviado para ${forgotEmail}`);
+    setConfirmModal({
+      isOpen: true,
+      title: 'Email Enviado',
+      message: `Um link de redefinição de senha foi enviado para ${forgotEmail}`,
+      variant: 'success',
+      singleButton: true,
+      onConfirm: () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        setShowForgotPass(false);
+      }
+    });
     setLoading(false);
-    setShowForgotPass(false);
   };
 
   const getRoleInfo = () => {
@@ -477,21 +545,23 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
                   type="tel"
                 />
 
-                <Input
-                  label="CPF"
-                  value={cpf}
-                  onChange={(e) => {
-                    // Mascara CPF: 000.000.000-00
-                    let v = e.target.value.replace(/\D/g, '');
-                    if (v.length > 11) v = v.slice(0, 11);
-                    v = v.replace(/(\d{3})(\d)/, '$1.$2');
-                    v = v.replace(/(\d{3})(\d)/, '$1.$2');
-                    v = v.replace(/(\d{3})(\d{1,2})$/, '$1-$2');
-                    setCpf(v);
-                  }}
-                  placeholder="000.000.000-00"
-                  icon={<FileText size={18} />}
-                />
+                {role !== 'company' && (
+                  <Input
+                    label="CPF"
+                    value={cpf}
+                    onChange={(e) => {
+                      // Mascara CPF: 000.000.000-00
+                      let v = e.target.value.replace(/\D/g, '');
+                      if (v.length > 11) v = v.slice(0, 11);
+                      v = v.replace(/(\d{3})(\d)/, '$1.$2');
+                      v = v.replace(/(\d{3})(\d)/, '$1.$2');
+                      v = v.replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+                      setCpf(v);
+                    }}
+                    placeholder="000.000.000-00"
+                    icon={<FileText size={18} />}
+                  />
+                )}
 
                 {/* Driver Specific Fields */}
                 {role === 'driver' && (
@@ -566,8 +636,24 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
                       <Input label="Cidade/UF" value={city && state ? `${city}/${state}` : ''} onChange={(e) => { /* Manual handling if needed, but composed */ }} placeholder="Cidade - UF" readOnly />
                     </div>
 
-                    <Input label="Gestor Financeiro" value={financialManager} onChange={(e) => setFinancialManager(e.target.value)} placeholder="Nome do responsável" icon={<User size={18} />} />
-                    <Input label="Telefone do Gestor" value={financialPhone} onChange={(e) => setFinancialPhone(e.target.value)} placeholder="(11) 99999-9999" icon={<Phone size={18} />} />
+                    <Input label="Responsável pela empresa" value={financialManager} onChange={(e) => setFinancialManager(e.target.value)} placeholder="Nome do responsável" icon={<User size={18} />} />
+
+                    <Input
+                      label="CPF do responsável"
+                      value={cpf}
+                      onChange={(e) => {
+                        let v = e.target.value.replace(/\D/g, '');
+                        if (v.length > 11) v = v.slice(0, 11);
+                        v = v.replace(/(\d{3})(\d)/, '$1.$2');
+                        v = v.replace(/(\d{3})(\d)/, '$1.$2');
+                        v = v.replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+                        setCpf(v);
+                      }}
+                      placeholder="000.000.000-00"
+                      icon={<FileText size={18} />}
+                    />
+
+                    <Input label="Telefone do responsável" value={financialPhone} onChange={(e) => setFinancialPhone(e.target.value)} placeholder="(11) 99999-9999" icon={<Phone size={18} />} />
 
                     <div className="border-2 border-dashed border-gray-300 rounded-xl p-4 text-center hover:bg-gray-50 transition cursor-pointer relative group">
                       <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => setContractFile(e.target.files?.[0] || null)} accept=".pdf,.img,.jpg" />
@@ -678,6 +764,18 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
           </div>
         )
       }
+      {confirmModal.isOpen && (
+        <ConfirmationModal
+          isOpen={confirmModal.isOpen}
+          title={confirmModal.title}
+          message={confirmModal.message}
+          onConfirm={confirmModal.onConfirm}
+          onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+          variant={confirmModal.variant}
+          singleButton={confirmModal.singleButton}
+          confirmText="OK"
+        />
+      )}
     </div >
   );
 };

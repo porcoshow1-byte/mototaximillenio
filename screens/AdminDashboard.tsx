@@ -8,7 +8,7 @@ import {
   AlertCircle, CheckCircle, Paperclip, Trash2, Edit2, Zap, Mail, Share2, Palette, Image as ImageIcon, Smartphone, LifeBuoy
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LineChart, Line, ResponsiveContainer } from 'recharts';
-import { Card, Button, Badge, Input } from '../components/UI';
+import { Card, Button, Badge, Input, ConfirmationModal } from '../components/UI';
 import { fetchDashboardData, DashboardData, createOccurrence, deleteOccurrence, updateOccurrence } from '../services/admin';
 
 import { updateUserProfile } from '../services/user';
@@ -24,6 +24,7 @@ import { APP_CONFIG } from '../constants';
 import { collection, getDocs, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { getSettings, saveSettings, SystemSettings } from '../services/settings';
 import { sendEmail, testSMTPConnection } from '../services/email';
+import { formatCNPJ } from '../utils/formatters';
 
 const libraries: ("places" | "geometry")[] = ['places', 'geometry'];
 
@@ -48,19 +49,15 @@ const SimpleTooltip = ({ content, children }: { content: string, children?: Reac
 // --- Subcomponent: Driver Details Modal ---
 const DriverDetailModal = ({ driver, onClose }: { driver: Driver, onClose: () => void }) => {
   const [loading, setLoading] = useState(false);
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => { },
+    variant: 'danger' as 'danger' | 'info' | 'success'
+  });
 
-  const handleAction = async (action: 'approve' | 'block') => {
-    let rejectionReason = '';
-
-    // If we are rejecting a PENDING driver (block action on pending status)
-    if (action === 'block' && driver.verificationStatus === 'pending') {
-      const reason = prompt("Motivo da Rejeição (Obrigatório):");
-      if (!reason) return; // Cancel if empty
-      rejectionReason = reason;
-    } else if (!confirm(`Tem certeza que deseja ${action === 'approve' ? 'APROVAR' : 'BLOQUEAR'} este motorista?`)) {
-      return;
-    }
-
+  const performUpdate = async (action: 'approve' | 'block', rejectionReason?: string) => {
     setLoading(true);
     try {
       await updateUserProfile(driver.id, {
@@ -74,6 +71,25 @@ const DriverDetailModal = ({ driver, onClose }: { driver: Driver, onClose: () =>
       alert("Erro ao atualizar status");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAction = async (action: 'approve' | 'block') => {
+    if (action === 'block' && driver.verificationStatus === 'pending') {
+      const reason = prompt("Motivo da Rejeição (Obrigatório):");
+      if (!reason) return; // Cancel if empty
+      performUpdate(action, reason);
+    } else {
+      setConfirmModal({
+        isOpen: true,
+        title: action === 'approve' ? 'Aprovar Motorista' : 'Bloquear Motorista',
+        message: `Tem certeza que deseja ${action === 'approve' ? 'APROVAR' : 'BLOQUEAR'} este motorista?`,
+        variant: action === 'approve' ? 'success' : 'danger',
+        onConfirm: () => {
+          performUpdate(action);
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        }
+      });
     }
   };
 
@@ -211,7 +227,18 @@ const DriverDetailModal = ({ driver, onClose }: { driver: Driver, onClose: () =>
 
         </div>
       </div>
+      {confirmModal.isOpen && (
+        <ConfirmationModal
+          isOpen={confirmModal.isOpen}
+          title={confirmModal.title}
+          message={confirmModal.message}
+          onConfirm={confirmModal.onConfirm}
+          onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+          variant={confirmModal.variant}
+        />
+      )}
     </div>
+
   );
 };
 
@@ -220,6 +247,13 @@ const UserDetailModal = ({ user, onClose, rides }: { user: User; onClose: () => 
   const [amountToAdd, setAmountToAdd] = useState('');
   const [isBlocked, setIsBlocked] = useState(user.isBlocked || false);
   const [walletBalance, setWalletBalance] = useState(user.walletBalance || 0);
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => { },
+    variant: 'danger' as 'danger' | 'info' | 'success'
+  });
 
   const userRides = rides.filter(r => r.passenger.id === user.id);
 
@@ -329,10 +363,17 @@ const UserDetailModal = ({ user, onClose, rides }: { user: User; onClose: () => 
                   variant="danger"
                   className="flex-1"
                   onClick={() => {
-                    if (confirm('Tem certeza que deseja EXCLUIR este passageiro? Esta ação não pode ser desfeita.')) {
-                      alert('Passageiro excluído (simulação)');
-                      onClose();
-                    }
+                    setConfirmModal({
+                      isOpen: true,
+                      title: 'Excluir Passageiro',
+                      message: 'Tem certeza que deseja EXCLUIR este passageiro? Esta ação não pode ser desfeita.',
+                      variant: 'danger',
+                      onConfirm: () => {
+                        alert('Passageiro excluído (simulação)');
+                        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                        onClose();
+                      }
+                    });
                   }}
                 >
                   Excluir Passageiro
@@ -403,6 +444,16 @@ const UserDetailModal = ({ user, onClose, rides }: { user: User; onClose: () => 
           )}
         </div>
       </div>
+      {confirmModal.isOpen && (
+        <ConfirmationModal
+          isOpen={confirmModal.isOpen}
+          title={confirmModal.title}
+          message={confirmModal.message}
+          onConfirm={confirmModal.onConfirm}
+          onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+          variant={confirmModal.variant}
+        />
+      )}
     </div>
   );
 };
@@ -550,7 +601,13 @@ const SearchingOverlay = ({ show }: { show: boolean }) => {
   );
 };
 
-const CompanyFormModal = ({ company, onClose, onSave, onDelete }: { company?: any; onClose: () => void; onSave: (data: any) => void; onDelete?: (id: string) => void }) => {
+const CompanyFormModal = ({ company, onClose, onSave, onDelete, onNotify }: {
+  company?: any;
+  onClose: () => void;
+  onSave: (data: any) => void;
+  onDelete?: (id: string) => void;
+  onNotify: (title: string, message: string, variant: 'success' | 'danger' | 'info') => void;
+}) => {
   const [formData, setFormData] = useState({
     name: company?.name || '',
     tradeName: company?.tradeName || '',
@@ -624,11 +681,11 @@ const CompanyFormModal = ({ company, onClose, onSave, onDelete }: { company?: an
             // Focus number field logic could go here
           }));
         } else {
-          alert('CEP não encontrado.');
+          onNotify('Erro', 'CEP não encontrado.', 'danger');
         }
       } catch (error) {
         console.error("Erro ao buscar CEP", error);
-        alert('Erro ao buscar CEP.');
+        onNotify('Erro', 'Erro ao buscar CEP.', 'danger');
       } finally {
         setLoadingCep(false);
       }
@@ -638,20 +695,24 @@ const CompanyFormModal = ({ company, onClose, onSave, onDelete }: { company?: an
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) return alert("Máximo 2MB");
+      if (file.size > 2 * 1024 * 1024) return onNotify('Tamanho Excedido', "Máximo 2MB", 'danger');
+
       const reader = new FileReader();
-      reader.onloadend = () => setFormData({ ...formData, logoUrl: reader.result as string });
+      reader.onloadend = () => {
+        const base64 = reader.result as string;
+        setFormData(prev => ({ ...prev, logoUrl: base64 }));
+      };
       reader.readAsDataURL(file);
     }
   };
 
   const handleSubmit = () => {
-    if (!formData.name || !formData.cnpj || !formData.email) return alert('Preencha os campos obrigatórios (*)');
+    if (!formData.name || !formData.cnpj || !formData.email) return onNotify('Campos Obrigatórios', 'Preencha os campos obrigatórios (*)', 'danger');
 
     // Password validation - only check if a new password was entered
-    if (!company && !formData.password) return alert('Defina uma senha de acesso para a empresa');
+    if (!company && !formData.password) return onNotify('Senha Necessária', 'Defina uma senha de acesso para a empresa', 'danger');
     if (formData.password && formData.password.length > 0 && formData.password !== formData.confirmPassword) {
-      return alert('As senhas não conferem');
+      return onNotify('Senha', 'As senhas não conferem', 'danger');
     }
 
     // Build the full address string from components if CEP was used, otherwise fallback to existing address field
@@ -837,50 +898,15 @@ const CompanyFormModal = ({ company, onClose, onSave, onDelete }: { company?: an
             </div>
           </div>
 
-          <div className="pt-4 space-y-3">
-            {/* Action buttons row */}
-            {company && (
-              <div className="flex gap-2">
-                {company.status === 'pending' && (
-                  <Button variant="success" className="flex-1" onClick={() => {
-                    if (confirm('Aprovar cadastro desta empresa?')) {
-                      onSave({ ...company, ...formData, status: 'active' });
-                    }
-                  }}>
-                    Aprovar Cadastro
-                  </Button>
-                )}
-
-                <Button variant="danger" onClick={() => {
-                  const isBlocked = company.status === 'blocked';
-                  if (confirm(isBlocked ? 'Desbloquear esta empresa?' : 'Bloquear acesso desta empresa?')) {
-                    onSave({ ...company, ...formData, status: isBlocked ? 'active' : 'blocked' });
-                  }
-                }} className="flex-1 bg-red-600 text-white hover:bg-red-700">
-                  {company.status === 'blocked' ? 'Desbloquear' : 'Bloquear Acesso'}
-                </Button>
-
-                {onDelete && (
-                  <Button variant="outline" onClick={() => {
-                    if (confirm('ATENÇÃO: Esta ação é irreversível! Deseja realmente excluir esta empresa permanentemente?')) {
-                      onDelete(company.id);
-                    }
-                  }} className="text-red-600 border-red-200 hover:bg-red-50">
-                    Excluir
-                  </Button>
-                )}
-              </div>
-            )}
-
-            {/* Save/Cancel row */}
-            <div className="flex gap-3">
-              <Button variant="outline" onClick={onClose} className="flex-1">Cancelar</Button>
-              <Button variant="success" onClick={handleSubmit} className="flex-1">Salvar Alterações</Button>
-            </div>
+          {/* Save/Cancel row */}
+          <div className="flex gap-3 pt-4">
+            <Button variant="outline" onClick={onClose} className="flex-1">Cancelar</Button>
+            <Button variant="success" onClick={handleSubmit} className="flex-1">Salvar Alterações</Button>
           </div>
         </div>
       </div>
     </div>
+
   );
 };
 
@@ -898,12 +924,80 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
   // Companies Tab State
   const [companies, setCompanies] = useState<any[]>([]); // Mock list of companies
   const [showCompanyList, setShowCompanyList] = useState(false);
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => { },
+    variant: 'danger' as 'danger' | 'info' | 'success',
+    singleButton: false
+  });
+
+  const handleNotify = (title: string, message: string, variant: 'success' | 'danger' | 'info') => {
+    setConfirmModal({
+      isOpen: true,
+      title,
+      message,
+      variant,
+      singleButton: true,
+      onConfirm: () => setConfirmModal(prev => ({ ...prev, isOpen: false }))
+    });
+  };
+
   const [showCompanyModal, setShowCompanyModal] = useState(false);
   const [editingCompany, setEditingCompany] = useState<any>(null);
   const [viewingCompanyId, setViewingCompanyId] = useState<string | null>(null);
 
   const handleSaveCompany = async (data: any) => {
     try {
+      // Uniqueness Check for Admin
+      const { checkUniqueness } = await import('../services/constraints');
+      const { isValidCNPJ } = await import('../utils/validators'); // Import Validator
+
+      const targetId = data.id || (editingCompany ? editingCompany.id : null);
+
+      // Find existing company to compare/validate properly
+      // Note: 'companies' is available in the scope
+      const existingCompany = targetId ? companies.find(c => c.id === targetId) : null;
+
+      // Check Email (only if changed or new)
+      const isNew = !targetId;
+      const emailChanged = !existingCompany || (data.email && existingCompany.email !== data.email);
+      const cnpjChanged = !existingCompany || (data.cnpj && existingCompany.cnpj !== data.cnpj);
+      const phoneChanged = !existingCompany || (data.phone && existingCompany.phone !== data.phone);
+
+      if ((isNew || emailChanged) && data.email) {
+        const emailCheck = await checkUniqueness('email', data.email);
+        if (emailCheck.exists) {
+          handleNotify('Erro de Validação', emailCheck.message || 'Email já cadastrado.', 'danger');
+          return;
+        }
+      }
+
+      if ((isNew || cnpjChanged) && data.cnpj) {
+        // Algorithmic Validation
+        if (!isValidCNPJ(data.cnpj)) {
+          handleNotify('Dados Inválidos', 'O CNPJ informado é inválido.', 'danger');
+          return;
+        }
+
+        const cnpjCheck = await checkUniqueness('cnpj', data.cnpj);
+        if (cnpjCheck.exists) {
+          handleNotify('Erro de Validação', cnpjCheck.message || 'CNPJ já cadastrado.', 'danger');
+          return;
+        }
+      }
+
+      // Phone Uniqueness Check
+      if ((isNew || phoneChanged) && data.phone) {
+        const phoneCheck = await checkUniqueness('phone', data.phone);
+        if (phoneCheck.exists) {
+          handleNotify('Erro de Validação', phoneCheck.message || 'Telefone já cadastrado.', 'danger');
+          return;
+        }
+      }
+
+      // Build addressComponents from individual fields for persistence
       // Build addressComponents from individual fields for persistence
       const addressComponents = {
         cep: data.cep || '',
@@ -923,34 +1017,40 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
         passwordHash: data.password && data.password.length > 0 ? data.password : (data.passwordHash || ''),
         isTempPassword: data.isTempPassword || false,
         // Remove temporary form fields that shouldn't be persisted
-        password: undefined,
-        confirmPassword: undefined
+        password: null,
+        confirmPassword: null
       };
       delete companyToSave.password;
       delete companyToSave.confirmPassword;
 
-      if (editingCompany) {
+      delete companyToSave.confirmPassword;
+
+      // Check if we are updating an existing company (either via modal 'editingCompany' or inline action 'data.id')
+      // Check if we are updating an existing company (either via modal 'editingCompany' or inline action 'data.id')
+      // const targetId = data.id || (editingCompany ? editingCompany.id : null); // Already declared above
+
+      if (targetId) {
         // Make sure ID is preserved
-        companyToSave.id = editingCompany.id;
+        companyToSave.id = targetId;
 
         // Update local list optimistically
         setCompanies(companies.map(c => c.id === companyToSave.id ? companyToSave : c));
         // Save to storage
+        console.log('[DEBUG] Saving Company:', companyToSave);
         await saveCompany(companyToSave);
 
         // Show appropriate message based on action
-        if (data.status !== editingCompany.status) {
+        // Only show alerts if we are interacting with the modal or if status changed significantly
+        // For inline toggle, we might not want a loud alert? Or maybe yes.
+        const oldStatus = companies.find(c => c.id === targetId)?.status;
+
+        if (data.status !== oldStatus) {
+          // Status changed logic
           if (data.status === 'blocked') {
-            alert('Empresa bloqueada com sucesso!');
-          } else if (data.status === 'active' && editingCompany.status === 'blocked') {
-            alert('Empresa desbloqueada com sucesso!');
-          } else if (data.status === 'active' && editingCompany.status === 'pending') {
-            alert('Empresa aprovada com sucesso!');
-          } else {
-            alert('Empresa atualizada com sucesso!');
+            // alert('Empresa bloqueada com sucesso!'); // Optional: toast is better
           }
         } else {
-          alert('Empresa atualizada com sucesso!');
+          // alert('Empresa atualizada com sucesso!');
         }
       } else {
         const newCompany = { ...companyToSave, id: String(Date.now()), usedCredit: 0, status: 'active' };
@@ -958,13 +1058,24 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
         setCompanies([...companies, newCompany]);
         // Save to storage
         await saveCompany(newCompany);
-        alert(`Empresa ${data.name} cadastrada com sucesso! Senha de acesso definida.`);
+        // Save to storage
+        await saveCompany(newCompany);
+        setConfirmModal({
+          isOpen: true,
+          title: 'Sucesso',
+          message: `Empresa ${data.name} cadastrada com sucesso! Senha de acesso definida.`,
+          variant: 'success',
+          singleButton: true,
+          onConfirm: () => {
+            setConfirmModal(prev => ({ ...prev, isOpen: false }));
+          }
+        });
       }
       setShowCompanyModal(false);
       setEditingCompany(null);
     } catch (error) {
       console.error(error);
-      alert('Erro ao salvar empresa.');
+      handleNotify('Erro', 'Erro ao salvar empresa.', 'danger');
     }
   };
 
@@ -975,10 +1086,13 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
       setCompanies(companies.filter(c => c.id !== companyId));
       setShowCompanyModal(false);
       setEditingCompany(null);
-      alert('Empresa excluída com sucesso!');
+      setCompanies(companies.filter(c => c.id !== companyId));
+      setShowCompanyModal(false);
+      setEditingCompany(null);
+      handleNotify('Sucesso', 'Empresa excluída com sucesso!', 'success');
     } catch (error) {
       console.error(error);
-      alert('Erro ao excluir empresa.');
+      handleNotify('Erro', 'Erro ao excluir empresa.', 'danger');
     }
   };
 
@@ -1362,7 +1476,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
   }
 
   if (viewingCompanyId) {
-    return <CompanyDashboard companyId={viewingCompanyId} onBack={() => setViewingCompanyId(null)} />;
+    return <CompanyDashboard companyId={viewingCompanyId} onBack={() => setViewingCompanyId(null)} isAdminView={true} />;
   }
 
   // Fallback se não houver dados
@@ -1423,29 +1537,37 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
   };
 
   const handleBulkAction = async (action: 'approve' | 'block') => {
-    if (!confirm(`Confirma ${action === 'approve' ? 'APROVAR' : 'BLOQUEAR'} ${selectedDriverIds.length} motoristas?`)) return;
-    setLoading(true);
-    try {
-      const promises = selectedDriverIds.map(id => updateUserProfile(id, {
-        verificationStatus: action === 'approve' ? 'approved' : 'rejected',
-        status: action === 'approve' ? 'offline' : 'offline'
-      }));
-      await Promise.all(promises);
-      alert("Ação em massa concluída com sucesso!");
-      setSelectedDriverIds([]);
-      loadData();
-    } catch (e) {
-      console.error(e);
-      alert("Erro ao processar ação em massa");
-    } finally {
-      setLoading(false);
-    }
+    setConfirmModal({
+      isOpen: true,
+      title: 'Confirmação em Massa',
+      message: `Confirma ${action === 'approve' ? 'APROVAR' : 'BLOQUEAR'} ${selectedDriverIds.length} motoristas?`,
+      variant: action === 'approve' ? 'success' : 'danger',
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        setLoading(true);
+        try {
+          const promises = selectedDriverIds.map(id => updateUserProfile(id, {
+            verificationStatus: action === 'approve' ? 'approved' : 'rejected',
+            status: action === 'approve' ? 'offline' : 'offline'
+          }));
+          await Promise.all(promises);
+          handleNotify('Sucesso', "Ação em massa concluída com sucesso!", 'success');
+          setSelectedDriverIds([]);
+          loadData();
+        } catch (e) {
+          console.error(e);
+          handleNotify('Erro', "Erro ao processar ação em massa", 'danger');
+        } finally {
+          setLoading(false);
+        }
+      }
+    });
   };
 
   // 4. Export Functionality
   const handleExport = (type: 'csv' | 'pdf') => {
     if (type === 'pdf') {
-      alert("Exportação PDF iniciada (simulado).");
+      handleNotify('Info', "Exportação PDF iniciada (simulado).", 'info');
       return;
     }
 
@@ -2569,6 +2691,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                     )}
                   </div>
                 </div>
+
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm text-gray-600">
                     <thead className="bg-gray-50 text-gray-900 font-semibold">
@@ -2616,6 +2739,120 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                             </td>
                           </tr>
                         ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            </div>
+          ) : activeTab === 'companies' ? (
+            <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold text-gray-800">Gerenciar Empresas</h2>
+                <Button onClick={() => { setEditingCompany(null); setShowCompanyModal(true); }}>
+                  <Plus size={18} className="mr-2" /> Nova Empresa
+                </Button>
+              </div>
+
+              <Card>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm text-gray-600">
+                    <thead className="bg-gray-50 text-gray-900 font-semibold">
+                      <tr>
+                        <th className="p-4">Empresa</th>
+                        <th className="p-4">CNPJ</th>
+                        <th className="p-4">Status</th>
+                        <th className="p-4">Crédito Utilizado</th>
+                        <th className="p-4 text-right">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {companies.map((company) => (
+                        <tr key={company.id} className="hover:bg-gray-50 transition">
+                          <td className="p-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden border border-gray-200">
+                                {company.logoUrl ? <img src={company.logoUrl} className="w-full h-full object-contain" /> : <Building2 size={20} className="text-gray-400" />}
+                              </div>
+                              <div onClick={() => { setViewingCompanyId(company.id); }} className="cursor-pointer">
+                                <div className="font-bold text-gray-900 hover:text-orange-600">{company.name}</div>
+                                <div className="text-xs text-gray-500">{company.email}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="p-4 font-mono text-xs">{formatCNPJ(company.cnpj)}</td>
+                          <td className="p-4">
+                            {/* Apple-style Toggle Switch */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const isBlocked = company.status === 'blocked';
+                                // Confirmation prompt
+                                setConfirmModal({
+                                  isOpen: true,
+                                  title: isBlocked ? 'Desbloquear Empresa' : 'Bloquear Empresa',
+                                  message: isBlocked ? `Deseja DESBLOQUEAR a empresa ${company.name}?` : `Deseja BLOQUEAR a empresa ${company.name}?`,
+                                  variant: isBlocked ? 'success' : 'danger',
+                                  onConfirm: () => {
+                                    handleSaveCompany({ ...company, status: isBlocked ? 'active' : 'blocked' });
+                                    setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                                  }
+                                });
+                              }}
+                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${company.status !== 'blocked' ? 'bg-green-500 focus:ring-green-500' : 'bg-gray-200 focus:ring-gray-500'}`}
+                              title={company.status === 'blocked' ? "Empresa Bloqueada" : "Empresa Ativa"}
+                            >
+                              <span className={`${company.status !== 'blocked' ? 'translate-x-6' : 'translate-x-1'} inline-block h-4 w-4 transform rounded-full bg-white transition-transform`} />
+                            </button>
+                            {company.status === 'pending' && <span className="ml-2 text-orange-500 text-xs font-bold">Pendente</span>}
+                          </td>
+                          <td className="p-4">
+                            <div className="text-gray-900 font-bold">R$ {(company.usedCredit || 0).toFixed(2)}</div>
+                            <div className="text-xs text-gray-400">de R$ {(company.creditLimit || 0).toFixed(2)}</div>
+                          </td>
+                          <td className="p-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <Button variant="outline" onClick={() => setViewingCompanyId(company.id)}>
+                                Painel
+                              </Button>
+                              <button
+                                onClick={() => { setEditingCompany(company); setShowCompanyModal(true); }}
+                                className="p-2 text-gray-500 hover:bg-gray-100 hover:text-blue-600 rounded-full transition"
+                                title="Editar Empresa"
+                              >
+                                <Edit2 size={16} />
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setConfirmModal({
+                                    isOpen: true,
+                                    title: 'Excluir Empresa',
+                                    message: `Tem certeza que deseja excluir empresa ${company.name}?`,
+                                    variant: 'danger',
+                                    onConfirm: () => {
+                                      handleDeleteCompany(company.id);
+                                      setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                                    }
+                                  });
+                                }}
+                                className="p-2 text-gray-500 hover:bg-red-50 hover:text-red-600 rounded-full transition"
+                                title="Excluir Empresa"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {companies.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="p-8 text-center text-gray-400">
+                            <Building2 size={48} className="mx-auto mb-2 opacity-50" />
+                            <p>Nenhuma empresa cadastrada.</p>
+                            <Button className="mt-4" onClick={() => setShowCompanyModal(true)}>Cadastrar Empresa</Button>
+                          </td>
+                        </tr>
                       )}
                     </tbody>
                   </table>
@@ -3236,6 +3473,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                 <CompanyDashboard
                   companyId={viewingCompanyId}
                   onBack={() => setViewingCompanyId(null)}
+                  isAdminView={true}
                 />
               ) : (
                 <>
@@ -4726,7 +4964,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
         </div>
       </div >
 
-      {showCompanyModal && <CompanyFormModal company={editingCompany} onClose={() => setShowCompanyModal(false)} onSave={handleSaveCompany} onDelete={handleDeleteCompany} />}
+      {showCompanyModal && <CompanyFormModal company={editingCompany} onClose={() => setShowCompanyModal(false)} onSave={handleSaveCompany} onDelete={handleDeleteCompany} onNotify={handleNotify} />}
       {viewDriver && <DriverDetailModal driver={viewDriver} onClose={() => setViewDriver(null)} />}
       {viewUser && <UserDetailModal user={viewUser} rides={safeData.recentRides} onClose={() => setViewUser(null)} />}
       {showAddDriver && <AddDriverModal onClose={() => setShowAddDriver(false)} />}
@@ -5155,10 +5393,18 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                 <Button
                   variant="danger"
                   onClick={() => {
-                    if (confirm('Excluir esta ocorrência permanentemente?')) {
-                      deleteNotification({ stopPropagation: () => { } } as React.MouseEvent, selectedOccurrence.id);
-                      setSelectedOccurrence(null);
-                    }
+                    setConfirmModal({
+                      isOpen: true,
+                      title: 'Excluir Ocorrência',
+                      message: 'Excluir esta ocorrência permanentemente?',
+                      variant: 'danger',
+                      singleButton: false,
+                      onConfirm: () => {
+                        deleteNotification({ stopPropagation: () => { } } as React.MouseEvent, selectedOccurrence.id);
+                        setSelectedOccurrence(null);
+                        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                      }
+                    });
                   }}
                 >
                   <Trash2 size={16} className="mr-1" /> Excluir
@@ -5189,10 +5435,26 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                         return [updateNotif, ...updatedNotifs];
                       });
                       // Notification will appear in the notification center
-                      alert('✅ Ocorrência salva com sucesso!');
-                      setSelectedOccurrence(null);
+                      setConfirmModal({
+                        isOpen: true,
+                        title: 'Sucesso',
+                        message: '✅ Ocorrência salva com sucesso!',
+                        variant: 'success',
+                        singleButton: true,
+                        onConfirm: () => {
+                          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                          setSelectedOccurrence(null);
+                        }
+                      });
                     } catch (e) {
-                      alert('Erro ao salvar ocorrência.');
+                      setConfirmModal({
+                        isOpen: true,
+                        title: 'Erro',
+                        message: 'Erro ao salvar ocorrência.',
+                        variant: 'danger',
+                        singleButton: true,
+                        onConfirm: () => setConfirmModal(prev => ({ ...prev, isOpen: false }))
+                      });
                     }
                   }}
                   className="!bg-green-600 hover:!bg-green-700"
@@ -5211,9 +5473,22 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
             onClose={() => setShowCompanyModal(false)}
             onSave={handleSaveCompany}
             onDelete={handleDeleteCompany}
+            onNotify={handleNotify}
           />
         )
       }
+      {confirmModal.isOpen && (
+        <ConfirmationModal
+          isOpen={confirmModal.isOpen}
+          title={confirmModal.title}
+          message={confirmModal.message}
+          onConfirm={confirmModal.onConfirm}
+          onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+          variant={confirmModal.variant}
+          confirmText={confirmModal.title.includes('Erro') || confirmModal.title.includes('Inválidos') || confirmModal.title.includes('Sucesso') ? 'OK' : 'Confirmar'}
+          singleButton={confirmModal.singleButton}
+        />
+      )}
     </div >
   );
 

@@ -1,73 +1,177 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-    <title>MotoJá - A Revolução do Mototáxi</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        darkMode: 'class',
-        theme: {
-          extend: {
-            colors: {
-              primary: {
-                50: '#fff7ed',
-                100: '#ffedd5',
-                200: '#fed7aa',
-                300: '#fdba74',
-                400: '#fb923c',
-                500: '#f97316',
-                600: '#ea580c',
-                700: '#c2410c',
-                800: '#9a3412',
-                900: '#7c2d12',
-              }
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>MotoJá - A Revolução do Mototáxi</title>
+  <meta property="og:title" content="MotoJá - A Revolução do Mototáxi" />
+  <meta property="og:description" content="Solicite seu mototáxi com segurança e rapidez. Baixe o app agora!" />
+  <meta property="og:image" content="/og-image.jpg?v=2" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:type" content="website" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            primary: {
+              50: '#fff7ed',
+              100: '#ffedd5',
+              200: '#fed7aa',
+              300: '#fdba74',
+              400: '#fb923c',
+              500: '#f97316',
+              600: '#ea580c',
+              700: '#c2410c',
+              800: '#9a3412',
+              900: '#7c2d12',
             }
           }
         }
       }
-    </script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <style>
-      html, body { height: 100%; width: 100%; margin: 0; padding: 0; }
-      #root { height: 100%; width: 100%; overflow: auto; }
-      body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
-      .no-scrollbar::-webkit-scrollbar { display: none; }
-      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-      .animate-pulse-slow { animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-      @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
-      .animate-fade-in { animation: fadeIn 0.8s ease-out forwards; }
-      .animate-slide-up { animation: slideUp 0.8s ease-out forwards; }
-      @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-      @keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+    }
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+    rel="stylesheet">
+  <style>
+    html,
+    body {
+      height: 100%;
+      width: 100%;
+      margin: 0;
+      padding: 0;
+    }
 
-      /* Novas Animações para o DriverApp */
-      .animate-slide-in-bottom { animation: slideInBottom 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards; }
-      .animate-fade-out-down { animation: fadeOutDown 0.5s cubic-bezier(0.55, 0.085, 0.68, 0.53) forwards; }
-      .animate-slide-out-right { animation: slideOutRight 0.5s cubic-bezier(0.55, 0.085, 0.68, 0.53) forwards; }
+    #root {
+      height: 100%;
+      width: 100%;
+      overflow: auto;
+    }
 
-      @keyframes slideInBottom {
-        0% { transform: translateY(100%); opacity: 0; }
-        100% { transform: translateY(0); opacity: 1; }
+    body {
+      font-family: 'Inter', sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    .animate-pulse-slow {
+      animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1;
       }
-      @keyframes fadeOutDown {
-        0% { transform: translateY(0); opacity: 1; }
-        100% { transform: translateY(100%); opacity: 0; }
+
+      50% {
+        opacity: .5;
       }
-      @keyframes slideOutRight {
-        0% { transform: translateX(0); opacity: 1; }
-        100% { transform: translateX(100%); opacity: 0; }
+    }
+
+    .animate-fade-in {
+      animation: fadeIn 0.8s ease-out forwards;
+    }
+
+    .animate-slide-up {
+      animation: slideUp 0.8s ease-out forwards;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
       }
-    </style>
-    <link rel="manifest" href="/manifest.json">
-    <link rel="apple-touch-icon" href="/icon-192.png">
-    <meta name="theme-color" content="#f97316">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+      to {
+        opacity: 1;
+      }
+    }
+
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* Novas Animações para o DriverApp */
+    .animate-slide-in-bottom {
+      animation: slideInBottom 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+    }
+
+    .animate-fade-out-down {
+      animation: fadeOutDown 0.5s cubic-bezier(0.55, 0.085, 0.68, 0.53) forwards;
+    }
+
+    .animate-slide-out-right {
+      animation: slideOutRight 0.5s cubic-bezier(0.55, 0.085, 0.68, 0.53) forwards;
+    }
+
+    @keyframes slideInBottom {
+      0% {
+        transform: translateY(100%);
+        opacity: 0;
+      }
+
+      100% {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    @keyframes fadeOutDown {
+      0% {
+        transform: translateY(0);
+        opacity: 1;
+      }
+
+      100% {
+        transform: translateY(100%);
+        opacity: 0;
+      }
+    }
+
+    @keyframes slideOutRight {
+      0% {
+        transform: translateX(0);
+        opacity: 1;
+      }
+
+      100% {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+    }
+  </style>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="apple-touch-icon" href="/icon-192.png">
+  <meta name="theme-color" content="#f97316">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 </head>
-  <body class="bg-gray-50 text-gray-900">
-    <div id="root"></div>
-    <!-- CORREÇÃO: Uso de caminho relativo ./main.tsx para garantir resolução correta no build -->
-    <script type="module" src="./main.tsx"></script>
-  </body>
+
+<body class="bg-gray-50 text-gray-900">
+  <div id="root"></div>
+  <!-- CORREÇÃO: Uso de caminho relativo ./main.tsx para garantir resolução correta no build -->
+  <script type="module" src="./main.tsx"></script>
+</body>
+
 </html>

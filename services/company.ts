@@ -201,3 +201,41 @@ export const getAllCompanies = async (): Promise<Company[]> => {
         return [];
     }
 };
+
+export const findCompanyByIdentifier = async (identifier: string): Promise<Company | null> => {
+    const cleanId = identifier.replace(/\D/g, ''); // For CNPJ check
+    const isEmail = identifier.includes('@');
+
+    if (!db) {
+        const companies = getMockData();
+        return companies.find(c =>
+            c.email.toLowerCase() === identifier.toLowerCase() ||
+            c.cnpj.replace(/\D/g, '') === cleanId
+        ) || null;
+    }
+
+    try {
+        // Try to find by Email
+        let q = query(collection(db, COLLECTION_NAME), where('email', '==', identifier));
+        let snapshot = await getDocs(q);
+
+        if (!snapshot.empty) return snapshot.docs[0].data() as Company;
+
+        // If not found and it looks like a CNPJ (digits only/mostly), try CNPJ
+        // Firestore doesn't support OR queries officially in V8/simple SDKs easily without 'or' operator,
+        // so sequential checks are safer for this context.
+        if (!isEmail) {
+            // Try strict CNPJ match if stored with formatting
+            q = query(collection(db, COLLECTION_NAME), where('cnpj', '==', identifier));
+            snapshot = await getDocs(q);
+            if (!snapshot.empty) return snapshot.docs[0].data() as Company;
+        }
+
+        // Fallback: iterate all (expensive but safe for small datasets if exact match fails)
+        // In production, maintain a 'cleanCnpj' field. For now, we rely on exact email match mostly.
+        return null;
+    } catch (error) {
+        console.error("Error finding company:", error);
+        return null;
+    }
+};
