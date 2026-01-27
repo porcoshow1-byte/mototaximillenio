@@ -1,19 +1,27 @@
+
 import React, { useState } from 'react';
 import { login, register } from '../services/auth';
 import { getOrCreateUserProfile } from '../services/user';
 import { Button, Input, Card, ConfirmationModal } from '../components/UI';
-import { AlertCircle, User, Phone, Car, MapPin, Camera, Building2, FileText, Upload, CheckCircle } from 'lucide-react';
+import { AlertCircle, User, Phone, Car, MapPin, Camera, Building2, FileText, Upload, CheckCircle, Mail } from 'lucide-react';
 import { APP_CONFIG } from '../constants';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../services/firebase';
 import { saveCompany, getMockCompanies } from '../services/company';
 import { Company } from '../types';
-import { getSettings } from '../services/settings';
+import { getSettings, subscribeToSettings, SystemSettings, DEFAULT_SETTINGS } from '../services/settings';
 
 export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: string, onLoginSuccess: () => void, onBack: () => void }) => {
   // Handle special 'driver-register' role: default to registration mode
   const isDirectRegistration = rawRole === 'driver-register';
   const role = isDirectRegistration ? 'driver' : rawRole;
+
+  const [settings, setSettings] = useState<SystemSettings>(DEFAULT_SETTINGS);
+
+  // Real-time settings
+  React.useEffect(() => {
+    return subscribeToSettings(setSettings);
+  }, []);
 
   const [isLogin, setIsLogin] = useState(!isDirectRegistration);
 
@@ -28,43 +36,145 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
   const [plate, setPlate] = useState('');
   const [cnhFile, setCnhFile] = useState<File | null>(null);
 
-  /* Company State */
+  const [tradeName, setTradeName] = useState('');
   const [cnpj, setCnpj] = useState('');
+  const [stateInscription, setStateInscription] = useState('');
+  const [contractFile, setContractFile] = useState<File | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+
+  // Address
   const [cep, setCep] = useState('');
   const [street, setStreet] = useState('');
   const [number, setNumber] = useState('');
-  const [complement, setComplement] = useState('');
   const [neighborhood, setNeighborhood] = useState('');
   const [city, setCity] = useState('');
   const [state, setState] = useState('');
+  const [complement, setComplement] = useState('');
+
+  // Financial
   const [financialManager, setFinancialManager] = useState('');
-  const [contractFile, setContractFile] = useState<File | null>(null);
-  const [logoFile, setLogoFile] = useState<File | null>(null);
-  const [tradeName, setTradeName] = useState('');
-  const [stateInscription, setStateInscription] = useState('');
   const [financialPhone, setFinancialPhone] = useState('');
 
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const [registrationSuccess, setRegistrationSuccess] = useState(false);
-  const [confirmModal, setConfirmModal] = useState({
-    isOpen: false,
-    title: '',
-    message: '',
-    onConfirm: () => { },
-    variant: 'info' as 'danger' | 'info' | 'success',
-    singleButton: true
-  });
 
-  /* Forgot Password State */
+  const [confirmModal, setConfirmModal] = useState<any>({ isOpen: false });
   const [showForgotPass, setShowForgotPass] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
 
-  const handleAuth = async () => {
+  const [fieldErrors, setFieldErrors] = useState<{ [key: string]: string }>({});
+  const [checkingField, setCheckingField] = useState<string | null>(null);
+
+
+  // Multi-step Registration (Passenger)
+  const [step, setStep] = useState(1);
+
+  const [emailSent, setEmailSent] = useState(false);
+
+  const handleBlur = async (field: string, value: string) => {
+    if (!value || isLogin) return; // Only check on registration
+
+    setCheckingField(field);
+    setFieldErrors(prev => ({ ...prev, [field]: '' })); // Clear previous error
+
+    // Dynamic import for validators on blur
+    if (field === 'cpf' && role !== 'company') {
+      const { isValidCPF } = await import('../utils/validators');
+      if (!isValidCPF(value)) {
+        setFieldErrors(prev => ({ ...prev, cpf: 'CPF inválido.' }));
+        setCheckingField(null);
+        return;
+      }
+    }
+
+
+    try {
+      if (role === 'company') {
+        if (field === 'cnpj') {
+          const { checkCompanyExists } = await import('../services/company');
+          const exists = await checkCompanyExists(value);
+          if (exists) setFieldErrors(prev => ({ ...prev, cnpj: 'CNPJ já cadastrado.' }));
+        }
+        else if (field === 'email') {
+          const { findCompanyByIdentifier } = await import('../services/company');
+          // Re-using findCompany as a check. If returns object, email is taken.
+          const exists = await findCompanyByIdentifier(value);
+          if (exists) setFieldErrors(prev => ({ ...prev, email: 'E-mail já cadastrado.' }));
+        }
+      } else {
+        // Users / Drivers
+        if (field === 'email' || field === 'cpf' || field === 'phone') {
+          const { checkUniqueness } = await import('../services/user');
+          const result = await checkUniqueness(field as any, value);
+          if (result.exists) {
+            setFieldErrors(prev => ({ ...prev, [field]: result.message || 'Já cadastrado.' }));
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Validation error", error);
+    } finally {
+      setCheckingField(null);
+    }
+  };
+
+
+
+  const handleNextStep = async () => {
     setError('');
+    const hasErrors = Object.values(fieldErrors).some(err => err);
+    if (hasErrors) return setError('Corrija os campos em vermelho antes de continuar.');
 
+    // Validations for Step 1
+    if (!name.trim() || !email.trim() || !phone.trim() || !cpf.trim() || !password) {
+      return setError('Preencha os campos (Nome, Email, Celular, CPF, Senha).');
+    }
+    if (password !== confirmPassword) return setError('As senhas não coincidem.');
 
-    // --- Uniqueness Checks ---
+    setLoading(true);
+    try {
+      // Validate CPF format strictly
+      const { isValidCPF } = await import('../utils/validators');
+      if (!isValidCPF(cpf)) {
+        setLoading(false);
+        return setError('CPF inválido. Verifique o número digitado.');
+      }
+
+      const { checkUniqueness } = await import('../services/constraints');
+
+      const emailCheck = await checkUniqueness('email', email);
+      if (emailCheck.exists) { setLoading(false); return setError(emailCheck.message || 'Email já cadastrado.'); }
+
+      const phoneCheck = await checkUniqueness('phone', phone);
+      if (phoneCheck.exists) { setLoading(false); return setError(phoneCheck.message || 'Telefone já cadastrado.'); }
+
+      const cpfCheck = await checkUniqueness('cpf', cpf);
+      if (cpfCheck.exists) { setLoading(false); return setError(cpfCheck.message || 'CPF já cadastrado.'); }
+
+      setStep(2);
+    } catch (e) {
+      console.error(e);
+      setError('Erro na validação. Tente novamente.');
+    } finally {
+      // Don't disable loading here if we proceeded to step 2? 
+      // Actually we should, because step 2 is just UI switch, no async op there.
+      setLoading(false);
+    }
+  };
+
+  const handleAuth = async () => {
+    // Block if any field error exists
+    const hasErrors = Object.values(fieldErrors).some(err => err);
+    if (hasErrors) {
+      setError('Corrija os campos em vermelho antes de continuar.');
+      return;
+    }
+
+    if (!email || !password) {
+      setError('Preencha todos os campos obrigatórios.');
+      return;
+    }  // --- Uniqueness Checks ---
     if (!isLogin) {
       if (password !== confirmPassword) return setError('As senhas não coincidem.');
       if (!name.trim()) return setError('Nome é obrigatório.');
@@ -265,7 +375,7 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
       let cnhUrl = '';
       if (!isLogin && (role === 'driver' || role === 'driver-register') && cnhFile && storage) {
         try {
-          const storageRef = ref(storage, `drivers/${uid || Date.now()}_cnh.jpg`);
+          const storageRef = ref(storage, `drivers / ${uid || Date.now()} _cnh.jpg`);
           await uploadBytes(storageRef, cnhFile);
           cnhUrl = await getDownloadURL(storageRef);
         } catch (uploadError) {
@@ -276,7 +386,7 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
       let contractUrl = '';
       if (!isLogin && role === 'company' && contractFile && storage) {
         try {
-          const storageRef = ref(storage, `companies/${uid || Date.now()}_contract.pdf`);
+          const storageRef = ref(storage, `companies / ${uid || Date.now()} _contract.pdf`);
           await uploadBytes(storageRef, contractFile);
           contractUrl = await getDownloadURL(storageRef);
         } catch (uploadError) {
@@ -287,7 +397,7 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
       let logoUrl = '';
       if (!isLogin && role === 'company' && logoFile && storage) {
         try {
-          const storageRef = ref(storage, `companies/${uid || Date.now()}_logo.png`);
+          const storageRef = ref(storage, `companies / ${uid || Date.now()} _logo.png`);
           await uploadBytes(storageRef, logoFile);
           logoUrl = await getDownloadURL(storageRef);
         } catch (uploadError) {
@@ -301,7 +411,7 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
           if (!isLogin) {
             // Create Company Record (Only for Registration)
             const newCompany: Company = {
-              id: uid || `comp_${Date.now()}`,
+              id: uid || `comp_${Date.now()} `,
               name: name,
               tradeName: tradeName,
               cnpj: cnpj,
@@ -321,6 +431,15 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
               isTempPassword: false
             };
             await saveCompany(newCompany);
+
+            // Also create a basic User Profile for session management (validateSession checks 'users' collection)
+            await getOrCreateUserProfile(
+              uid || `comp_user_${Date.now()}`,
+              email,
+              'company',
+              { name: name }
+            );
+
             setLoading(false);
             setRegistrationSuccess(true);
             return; // STOP here for registration
@@ -331,7 +450,11 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
             userCredential.user.uid,
             userCredential.user.email || '',
             role === 'driver-register' ? 'driver' : (role as 'user' | 'driver'),
-            !isLogin ? { name, phone, cpf, vehicle, plate, cnhUrl } : undefined
+            !isLogin ? {
+              name, phone, cpf, vehicle, plate, cnhUrl,
+              address: role === 'user' ? `${street}, ${number} ${complement ? '(' + complement + ')' : ''}, ${neighborhood} - ${city}/${state} - CEP: ${cep}` : undefined,
+              addressComponents: role === 'user' ? { street, number, neighborhood, city, state, cep, complement } : undefined
+            } : undefined
           );
 
           if (!isLogin) {
@@ -418,11 +541,11 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
   return (
     <div className="min-h-screen flex bg-white animate-fade-in w-full">
       {/* Left Panel - Image (Visible on Desktop) */}
-      <div className={`hidden lg:flex lg:w-1/2 relative overflow-hidden bg-gray-900 items-center justify-center`}>
+      <div className={`hidden lg:flex lg:w-1/2 sticky top-0 h-screen relative overflow-hidden bg-gray-900 items-center justify-center`}>
         {/* Background Image Layer - Uses Visual Settings for ALL roles */}
         <div className="absolute inset-0 z-0">
-          {getSettings().visual?.loginBackgroundImage ? (
-            <img src={getSettings().visual!.loginBackgroundImage} className="w-full h-full object-cover opacity-90" alt="Login Background" />
+          {settings.visual?.loginBackgroundImage ? (
+            <img src={settings.visual!.loginBackgroundImage} className="w-full h-full object-cover opacity-90" alt="Login Background" />
           ) : (
             <div className={`w-full h-full bg-gradient-to-br ${roleInfo.gradient}`}></div>
           )}
@@ -435,10 +558,10 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
         <div className="relative z-20 p-12 text-white max-w-lg h-full flex flex-col justify-center">
           <div className="flex-1 flex flex-col justify-center">
             <h1 className="text-5xl font-bold mb-4">
-              {getSettings().visual?.loginTitle || APP_CONFIG.name}
+              {settings.visual?.loginTitle || APP_CONFIG.name}
             </h1>
             <p className="text-xl opacity-90 leading-relaxed mb-8">
-              {getSettings().visual?.loginSubtitle || 'Conectando destinos, entregando confiança e agilidade para o seu dia a dia.'}
+              {settings.visual?.loginSubtitle || 'Conectando destinos, entregando confiança e agilidade para o seu dia a dia.'}
             </p>
           </div>
 
@@ -460,43 +583,45 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
         className="w-full lg:w-1/2 flex flex-col justify-center items-center p-6 lg:p-12 overflow-y-auto bg-gray-50 lg:bg-white relative z-0"
       >
         {/* Mobile Background Image (Admin only, hidden on Desktop) */}
-        {role === 'admin' && getSettings().visual?.mobileBackgroundImage && (
+        {role === 'admin' && settings.visual?.mobileBackgroundImage && (
           <>
             <div
               className="absolute inset-0 bg-cover bg-center lg:hidden z-0"
-              style={{ backgroundImage: `url(${getSettings().visual!.mobileBackgroundImage})` }}
+              style={{ backgroundImage: `url(${settings.visual!.mobileBackgroundImage})` }}
             ></div>
             <div className="absolute inset-0 bg-black/60 lg:hidden z-0"></div>
           </>
         )}
 
-        <div className={`w-full max-w-md bg-white lg:bg-transparent p-6 lg:p-0 rounded-2xl shadow-xl lg:shadow-none relative z-10 ${role === 'admin' && getSettings().visual?.mobileBackgroundImage ? 'bg-white/85 backdrop-blur-md lg:bg-transparent lg:backdrop-blur-none p-8' : ''}`}>
+        <div className={`w-full max-w-md bg-white lg:bg-transparent p-6 lg:p-0 rounded-2xl shadow-xl lg:shadow-none relative z-10 ${role === 'admin' && settings.visual?.mobileBackgroundImage ? 'bg-white/85 backdrop-blur-md lg:bg-transparent lg:backdrop-blur-none p-8' : ''}`}>
 
           {/* Header */}
           {registrationSuccess ? (
             <div className="text-center animate-fade-in py-8">
-              <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <CheckCircle size={40} className="text-green-600" />
+              <div className="w-20 h-20 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Mail size={40} className="text-orange-600" />
               </div>
 
-              {role === 'company' ? (
-                <>
-                  <h2 className="text-3xl font-bold text-gray-900 mb-4">Cadastro em Análise!</h2>
-                  <p className="text-gray-600 mb-8 max-w-sm mx-auto">
-                    Suas informações foram recebidas com sucesso. Nossa equipe irá analisar os documentos e você será notificado por e-mail assim que o cadastro for aprovado.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <h2 className="text-3xl font-bold text-gray-900 mb-4">Cadastro Concluído!</h2>
-                  <p className="text-gray-600 mb-8 max-w-sm mx-auto">
-                    Sua conta foi criada com sucesso. Agora você já pode acessar a plataforma utilizando seu e-mail e senha.
-                  </p>
-                </>
+              <h2 className="text-3xl font-bold text-gray-900 mb-4">Verifique seu E-mail!</h2>
+
+              <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 mb-6 text-left">
+                <p className="text-gray-700 text-sm mb-2">
+                  Um link de confirmação foi enviado para: <br />
+                  <span className="font-bold text-gray-900">{email}</span>
+                </p>
+                <p className="text-gray-500 text-xs">
+                  Para sua segurança, valide seu cadastro clicando no link enviado. Verifique também sua caixa de Spam/Lixo Eletrônico.
+                </p>
+              </div>
+
+              {role === 'company' && (
+                <p className="text-gray-500 text-sm mb-6 bg-yellow-50 p-3 rounded-lg border border-yellow-100">
+                  <span className="font-bold text-yellow-800">Atenção:</span> Além da validação de e-mail, seu cadastro passará por uma análise de crédito e documentos antes da liberação total.
+                </p>
               )}
 
-              <Button onClick={() => { setRegistrationSuccess(false); setIsLogin(true); setError(''); }} fullWidth>
-                Fazer Login
+              <Button onClick={() => { setRegistrationSuccess(false); setIsLogin(true); setError(''); setStep(1); }} fullWidth>
+                Voltar para Login
               </Button>
             </div>
           ) : (
@@ -528,39 +653,124 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
             {/* Display Registration Fields if !isLogin */}
             {!isLogin && (
               <div className="space-y-4 animate-fade-in pb-2">
-                {/* Name / Phone */}
-                <Input
-                  label={role === 'company' ? "Razão Social" : "Nome Completo"}
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder={role === 'company' ? "Razão Social LTDA" : "Seu nome"}
-                  icon={role === 'company' ? <Building2 size={18} /> : <User size={18} />}
-                />
-                <Input
-                  label={role === 'company' ? "Telefone Comercial" : "Celular"}
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="(11) 99999-9999"
-                  icon={<Phone size={18} />}
-                  type="tel"
-                />
+                {/* Step 1: Personal Data */}
+                {(role !== 'user' || step === 1) && (
+                  <>
+                    <Input
+                      label={role === 'company' ? "Razão Social" : "Nome Completo"}
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      onBlur={() => handleBlur('name', name)}
+                      placeholder={role === 'company' ? "Razão Social LTDA" : "Seu nome"}
+                      icon={role === 'company' ? <Building2 size={18} /> : <User size={18} />}
+                      error={fieldErrors.name}
+                    />
+                    {/* Moved Email here for step 1 flow if user */}
+                    {(role === 'user') && (
+                      <Input
+                        label="E-mail"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        onBlur={() => handleBlur('email', email)}
+                        placeholder="seu@email.com"
+                        icon={<Mail size={18} />}
+                        type="email"
+                        error={fieldErrors.email}
+                      />
+                    )}
+                  </>
+                )}
+                {(role !== 'user' || step === 1) && (
+                  <>
+                    <Input
+                      label={role === 'company' ? "Telefone Comercial" : "Celular"}
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      onBlur={() => handleBlur('phone', phone)}
+                      placeholder="(11) 99999-9999"
+                      icon={<Phone size={18} />}
+                      type="tel"
+                      error={fieldErrors.phone}
+                    />
 
-                {role !== 'company' && (
-                  <Input
-                    label="CPF"
-                    value={cpf}
-                    onChange={(e) => {
-                      // Mascara CPF: 000.000.000-00
-                      let v = e.target.value.replace(/\D/g, '');
-                      if (v.length > 11) v = v.slice(0, 11);
-                      v = v.replace(/(\d{3})(\d)/, '$1.$2');
-                      v = v.replace(/(\d{3})(\d)/, '$1.$2');
-                      v = v.replace(/(\d{3})(\d{1,2})$/, '$1-$2');
-                      setCpf(v);
-                    }}
-                    placeholder="000.000.000-00"
-                    icon={<FileText size={18} />}
-                  />
+                    {role !== 'company' && (
+                      <Input
+                        label="CPF"
+                        value={cpf}
+                        onChange={(e) => {
+                          // Mascara CPF: 000.000.000-00
+                          let v = e.target.value.replace(/\D/g, '');
+                          if (v.length > 11) v = v.slice(0, 11);
+                          v = v.replace(/(\d{3})(\d)/, '$1.$2');
+                          v = v.replace(/(\d{3})(\d)/, '$1.$2');
+                          v = v.replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+                          setCpf(v);
+                        }}
+                        onBlur={() => handleBlur('cpf', cpf)}
+                        placeholder="000.000.000-00"
+                        icon={<FileText size={18} />}
+                        error={fieldErrors.cpf}
+                      />
+                    )}
+                  </>
+                )}
+
+                {/* Step 2: User Address */}
+                {role === 'user' && step === 2 && (
+                  <div className="space-y-4 animate-fade-in relative">
+                    <button
+                      onClick={() => setStep(1)}
+                      className="text-sm text-gray-500 hover:text-orange-600 flex items-center gap-1 mb-2 font-medium"
+                    >
+                      &larr; Voltar para Dados Pessoais
+                    </button>
+
+                    <div className="flex items-center gap-2 mb-2 text-orange-600 font-bold">
+                      <MapPin size={20} />
+                      <h3>Endereço Completo</h3>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="col-span-1">
+                        <Input label="CEP" value={cep} onChange={(e) => {
+                          const newCep = e.target.value;
+                          setCep(newCep);
+                          // Limpa caracteres não numéricos
+                          const digits = newCep.replace(/\D/g, '');
+                          if (digits.length === 8) {
+                            setLoading(true);
+                            fetch(`https://viacep.com.br/ws/${digits}/json/`)
+                              .then(res => res.json())
+                              .then(data => {
+                                if (!data.erro) {
+                                  setStreet(data.logradouro);
+                                  setNeighborhood(data.bairro);
+                                  setCity(data.localidade);
+                                  setState(data.uf);
+                                }
+                              })
+                              .finally(() => setLoading(false));
+                          }
+                        }} placeholder="00000-000"
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <Input label="Rua" value={street} onChange={(e) => setStreet(e.target.value)} placeholder="Rua Exemplo" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="col-span-1">
+                        <Input label="Número" value={number} onChange={(e) => setNumber(e.target.value)} placeholder="123" />
+                      </div>
+                      <div className="col-span-2">
+                        <Input label="Bairro" value={neighborhood} onChange={(e) => setNeighborhood(e.target.value)} placeholder="Bairro" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Input label="Cidade" value={city} onChange={(e) => setCity(e.target.value)} placeholder="Cidade" />
+                      <Input label="UF" value={state} onChange={(e) => setState(e.target.value)} placeholder="SP" maxLength={2} />
+                    </div>
+                    <Input label="Complemento (Opcional)" value={complement} onChange={(e) => setComplement(e.target.value)} placeholder="Apto 101" />
+                  </div>
                 )}
 
                 {/* Driver Specific Fields */}
@@ -593,7 +803,15 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
                     </div>
 
                     <Input label="Nome Fantasia" value={tradeName} onChange={(e) => setTradeName(e.target.value)} placeholder="Nome Comercial" icon={<Building2 size={18} />} />
-                    <Input label="CNPJ" value={cnpj} onChange={(e) => setCnpj(e.target.value)} placeholder="00.000.000/0001-00" icon={<FileText size={18} />} />
+                    <Input
+                      label="CNPJ"
+                      value={cnpj}
+                      onChange={(e) => setCnpj(e.target.value)}
+                      onBlur={() => handleBlur('cnpj', cnpj)}
+                      placeholder="00.000.000/0001-00"
+                      icon={<FileText size={18} />}
+                      error={fieldErrors.cnpj}
+                    />
                     <Input label="Inscrição Estadual" value={stateInscription} onChange={(e) => setStateInscription(e.target.value)} placeholder="000.000.000.000" />
 
                     <div className="grid grid-cols-2 gap-4">
@@ -670,34 +888,38 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
             {!registrationSuccess && (
               <>
                 <div className="space-y-4">
-                  <Input
-                    label={role === 'company' && isLogin ? "E-mail ou CNPJ" : "E-mail de Acesso"}
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder={role === 'company' && isLogin ? "seu@email.com ou CNPJ" : "seu@email.com"}
-                    type={!isLogin && role === 'company' ? 'email' : 'text'}
-                  // icon={<User size={18} />}
-                  />
-
-                  <div>
+                  {(role !== 'user' || isLogin) && (
                     <Input
-                      label="Senha"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="******"
-                      type="password"
-                    // icon={<Lock size={18} />}
+                      label={role === 'company' && isLogin ? "E-mail ou CNPJ" : "E-mail de Acesso"}
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder={role === 'company' && isLogin ? "seu@email.com ou CNPJ" : "seu@email.com"}
+                      type={!isLogin && role === 'company' ? 'email' : 'text'}
+                    // icon={<User size={18} />}
                     />
-                    {isLogin && (
-                      <div className="flex justify-end mt-1">
-                        <button onClick={() => setShowForgotPass(true)} className="text-xs font-medium text-gray-500 hover:text-orange-600 transition-colors">
-                          Esqueceu a senha?
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                  )}
 
-                  {!isLogin && (
+                  {(role !== 'user' || isLogin || step === 1) && (
+                    <div>
+                      <Input
+                        label="Senha"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="******"
+                        type="password"
+                      // icon={<Lock size={18} />}
+                      />
+                      {isLogin && (
+                        <div className="flex justify-end mt-1">
+                          <button onClick={() => setShowForgotPass(true)} className="text-xs font-medium text-gray-500 hover:text-orange-600 transition-colors">
+                            Esqueceu a senha?
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {!isLogin && (role !== 'user' || step === 1) && (
                     <Input
                       label="Confirmar Senha"
                       value={confirmPassword}
@@ -709,12 +931,12 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
                 </div>
 
                 <Button
-                  onClick={handleAuth}
+                  onClick={(!isLogin && role === 'user' && step === 1) ? handleNextStep : handleAuth}
                   isLoading={loading}
                   className={`w-full py-3 text-lg font-bold shadow-lg shadow-orange-500/20 ${role === 'admin' ? 'text-white' : ''}`}
-                  style={role === 'admin' && getSettings().visual?.primaryColor ? { backgroundColor: getSettings().visual!.primaryColor, borderColor: getSettings().visual!.primaryColor } : {}}
+                  style={role === 'admin' && settings.visual?.primaryColor ? { backgroundColor: settings.visual!.primaryColor, borderColor: settings.visual!.primaryColor } : {}}
                 >
-                  {isLogin ? 'Entrar na Plataforma' : 'Finalizar Cadastro'}
+                  {isLogin ? 'Entrar na Plataforma' : (role === 'user' && step === 1 ? 'Próximo' : 'Finalizar Cadastro')}
                 </Button>
               </>
             )}
@@ -724,25 +946,29 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
               <div className="text-center pt-4">
                 <p className="text-gray-500 text-sm">
                   {isLogin ? 'Ainda não tem conta?' : 'Já possui cadastro?'}
-                  <button onClick={() => { setIsLogin(!isLogin); setError(''); }} className="ml-2 font-bold text-orange-600 hover:text-orange-700 hover:underline">
+                  <button onClick={() => { setIsLogin(!isLogin); setError(''); setStep(1); }} className="ml-2 font-bold text-orange-600 hover:text-orange-700 hover:underline">
                     {isLogin ? 'Criar Nova Conta' : 'Fazer Login'}
                   </button>
                 </p>
               </div>
             )}
 
-            <div className="mt-8 pt-6 border-t border-gray-100 text-center lg:hidden">
-              <button onClick={onBack} className="text-gray-400 hover:text-gray-600 text-sm font-medium">
-                Cancelar e Voltar
-              </button>
-            </div>
+            {/* Back button restricted to ADMIN only */}
+            {role === 'admin' && (
+              <>
+                <div className="mt-8 pt-6 border-t border-gray-100 text-center lg:hidden">
+                  <button onClick={onBack} className="text-gray-400 hover:text-gray-600 text-sm font-medium">
+                    Cancelar e Voltar
+                  </button>
+                </div>
 
-            {/* Back button for all devices at bottom of form area is good UX */}
-            <div className="hidden lg:block mt-8 pt-6 border-t border-gray-100 text-center">
-              <button onClick={onBack} className="text-gray-400 hover:text-gray-600 text-sm font-medium transition-colors">
-                &larr; Voltar para a tela inicial
-              </button>
-            </div>
+                <div className="hidden lg:block mt-8 pt-6 border-t border-gray-100 text-center">
+                  <button onClick={onBack} className="text-gray-400 hover:text-gray-600 text-sm font-medium transition-colors">
+                    &larr; Voltar para a tela inicial
+                  </button>
+                </div>
+              </>
+            )}
 
           </div>
         </div>
@@ -764,18 +990,20 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
           </div>
         )
       }
-      {confirmModal.isOpen && (
-        <ConfirmationModal
-          isOpen={confirmModal.isOpen}
-          title={confirmModal.title}
-          message={confirmModal.message}
-          onConfirm={confirmModal.onConfirm}
-          onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
-          variant={confirmModal.variant}
-          singleButton={confirmModal.singleButton}
-          confirmText="OK"
-        />
-      )}
+      {
+        confirmModal.isOpen && (
+          <ConfirmationModal
+            isOpen={confirmModal.isOpen}
+            title={confirmModal.title}
+            message={confirmModal.message}
+            onConfirm={confirmModal.onConfirm}
+            onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+            variant={confirmModal.variant}
+            singleButton={confirmModal.singleButton}
+            confirmText="OK"
+          />
+        )
+      }
     </div >
   );
 };

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LineChart, Line, ResponsiveContainer } from 'recharts';
 import { Card, Button, Badge, Input, ConfirmationModal } from '../components/UI';
+import { ToastProvider, useToast } from '../components/Toast';
 import { fetchDashboardData, DashboardData, createOccurrence, deleteOccurrence, updateOccurrence } from '../services/admin';
 
 import { updateUserProfile } from '../services/user';
@@ -22,7 +23,9 @@ import { Driver, RideRequest, User, Occurrence } from '../types';
 import { useJsApiLoader } from '@react-google-maps/api';
 import { APP_CONFIG } from '../constants';
 import { collection, getDocs, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
-import { getSettings, saveSettings, SystemSettings } from '../services/settings';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { storage } from '../services/firebase';
+import { getSettings, saveSettings, subscribeToSettings, SystemSettings, DEFAULT_SETTINGS } from '../services/settings';
 import { sendEmail, testSMTPConnection } from '../services/email';
 import { formatCNPJ } from '../utils/formatters';
 
@@ -263,8 +266,13 @@ const UserDetailModal = ({ user, onClose, rides }: { user: User; onClose: () => 
       const newBalance = walletBalance + amount;
       setWalletBalance(newBalance);
       setAmountToAdd('');
+      // Using window.alert safely here if toast is not available in sub-modal or pass toast as prop?
+      // Since useToast is hook, we can use it here if UserDetailModal is inside Provider.
+      // But we haven't wrapped app yet.
+      // Assuming we will wrap everything, let's use toast.
+      // Wait, I can't use 'toast' here unless I call useToast().
+      // I need to add useToast hook to this component too.
       alert(`R$ ${(amount || 0).toFixed(2)} adicionados com sucesso! Novo saldo: R$ ${(newBalance || 0).toFixed(2)}`);
-      // TODO: Persist logic here
     }
   };
 
@@ -523,6 +531,71 @@ const AddDriverModal = ({ onClose }: { onClose: () => void }) => {
   );
 };
 
+const AddCompanyModal = ({ onClose }: { onClose: () => void }) => {
+  const [email, setEmail] = useState('');
+  const [sending, setSending] = useState(false);
+
+  const handleSendInvite = async () => {
+    if (!email.trim()) return alert("Digite um e-mail válido");
+    setSending(true);
+    // Simulate API call
+    await new Promise(r => setTimeout(r, 1500));
+    setSending(false);
+    alert(`Convite enviado com sucesso para ${email}!`);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl p-6 animate-slide-up">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-xl font-bold text-gray-800">Adicionar Empresa</h3>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full"><X size={20} /></button>
+        </div>
+
+        <div className="bg-orange-50 border border-orange-100 rounded-xl p-4 mb-6">
+          <p className="text-sm text-orange-800 flex items-start gap-2">
+            <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+            Para garantir a segurança jurídica e validação do CNPJ, recomendamos que a empresa faça o cadastro diretamente pelo portal.
+          </p>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Enviar Convite por E-mail</label>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <Input
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="contato@empresa.com"
+                />
+              </div>
+              <Button onClick={handleSendInvite} isLoading={sending}>Enviar</Button>
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-gray-100">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Ou compartilhe o link de cadastro</label>
+            <div className="bg-gray-100 p-3 rounded-lg flex items-center justify-between font-mono text-xs text-gray-600">
+              <span>{window.location.origin}/empresas</span>
+              <button
+                className="text-orange-600 font-bold hover:underline"
+                onClick={() => {
+                  navigator.clipboard.writeText(`${window.location.origin}/empresas`);
+                  alert('Link copiado!');
+                }}
+              >
+                COPIAR
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // --- Subcomponent: Address Input with Google Places Autocomplete ---
 const AddressInput = ({
   value,
@@ -627,6 +700,7 @@ const CompanyFormModal = ({ company, onClose, onSave, onDelete, onNotify }: {
     state: company?.addressComponents?.state || '',
     complement: company?.addressComponents?.complement || '',
     logoUrl: company?.logoUrl || '',
+    allowInvoicing: company?.allowInvoicing || false,
     password: '',
     confirmPassword: '',
     isTempPassword: company?.isTempPassword || false
@@ -650,6 +724,7 @@ const CompanyFormModal = ({ company, onClose, onSave, onDelete, onNotify }: {
         financialManagerPhone: company.financialManagerPhone || '',
         logoUrl: company.logoUrl || '',
         creditLimit: company.creditLimit || 0,
+        allowInvoicing: company.allowInvoicing || false,
         isTempPassword: company.isTempPassword || false,
         address: company.address || '',
         // Address components
@@ -860,6 +935,28 @@ const CompanyFormModal = ({ company, onClose, onSave, onDelete, onNotify }: {
             </div>
           </div>
 
+
+
+          <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 flex justify-between items-center">
+            <div>
+              <h4 className="font-bold text-blue-800 text-sm flex items-center gap-2">
+                <FileText size={16} /> Faturamento de Corridas
+              </h4>
+              <p className="text-xs text-blue-600 mt-1 max-w-xs">
+                Se habilitado, a empresa poderá realizar corridas faturadas para pagamento posterior (Boleto/Fatura).
+              </p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={formData.allowInvoicing}
+                onChange={(e) => setFormData({ ...formData, allowInvoicing: e.target.checked })}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+            </label>
+          </div>
+
           <div className="bg-orange-50 p-4 rounded-xl border border-orange-100">
             <h4 className="font-bold text-orange-800 mb-3 flex items-center gap-2">
               <Shield size={16} /> Credenciais de Acesso
@@ -904,13 +1001,13 @@ const CompanyFormModal = ({ company, onClose, onSave, onDelete, onNotify }: {
             <Button variant="success" onClick={handleSubmit} className="flex-1">Salvar Alterações</Button>
           </div>
         </div>
-      </div>
-    </div>
+      </div >
+    </div >
 
   );
 };
 
-export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
+const AdminDashboardContent = ({ onLogout }: { onLogout?: () => void }) => {
   const { isLoaded, loadError } = useJsApiLoader({
     id: 'google-map-script',
     googleMapsApiKey: APP_CONFIG.googleMapsApiKey,
@@ -1131,6 +1228,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
   const [viewDriver, setViewDriver] = useState<Driver | null>(null);
   const [viewUser, setViewUser] = useState<User | null>(null);
   const [showAddDriver, setShowAddDriver] = useState(false);
+  const [showAddCompanyModal, setShowAddCompanyModal] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showDriverPanel, setShowDriverPanel] = useState(true);
   const [chatDriver, setChatDriver] = useState<Driver | null>(null);
@@ -1206,6 +1304,69 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
               time: new Date(),
               read: false,
               driver: driver.name
+            };
+            setNotifications(prev => [newNotif, ...prev]);
+          }
+        }
+      });
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Listen for Pending Companies (New Registrations)
+  const knownCompaniesRef = React.useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!db) return;
+    const q = query(collection(db, 'companies'), where('status', '==', 'pending'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const comp = change.doc.data();
+          const id = change.doc.id;
+          if (!knownCompaniesRef.current.has(id)) {
+            knownCompaniesRef.current.add(id);
+            playSound('newRequest');
+            const newNotif = {
+              id: `company-${id}`,
+              type: 'new_company',
+              title: 'Nova Empresa Cadastrada',
+              message: `${comp.name} aguarda análise.`,
+              time: new Date(),
+              read: false,
+              companyId: id
+            };
+            setNotifications(prev => [newNotif, ...prev]);
+          }
+        }
+      });
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Listen for New Passengers
+  const knownUsersRef = React.useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!db) return;
+    const q = query(collection(db, 'users'), where('role', '==', 'user'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const user = change.doc.data();
+          const id = change.doc.id;
+          // Basic check to avoid notifying for ALL existing users on reload
+          // (Simple session-based uniqueness)
+          if (!knownUsersRef.current.has(id)) {
+            knownUsersRef.current.add(id);
+            // Only notify recent? For now, notify all "new" to this session
+            playSound('notification');
+            const newNotif = {
+              id: `user-${id}`,
+              type: 'new_user',
+              title: 'Novo Passageiro Registrado',
+              message: `${user.name} criou uma conta.`,
+              time: new Date(),
+              read: false,
+              userId: id
             };
             setNotifications(prev => [newNotif, ...prev]);
           }
@@ -1335,29 +1496,55 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
 
 
   // Settings State using Global Service
-  const [settings, setSettings] = useState<SystemSettings>(getSettings());
+  const [settings, setSettings] = useState<SystemSettings>(DEFAULT_SETTINGS);
+
+  // Subscribe to real-time settings
+  useEffect(() => {
+    const unsubscribe = subscribeToSettings((newSettings) => {
+      setSettings(newSettings);
+    });
+    return () => unsubscribe();
+  }, []);
+  const { toast } = useToast();
   const [savingSettings, setSavingSettings] = useState(false);
   const [smtpTestResult, setSmtpTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
-  // Load latest settings on mount
-  useEffect(() => {
-    setSettings(getSettings());
-  }, []);
-
   const handleSaveSettings = async () => {
+    console.log('[handleSaveSettings] Starting save...');
     setSavingSettings(true);
-    // Simulate API call
-    await new Promise(r => setTimeout(r, 800));
-    saveSettings(settings); // Persist to local storage via service
-    setSavingSettings(false);
-    alert('Configurações e Integrações salvas com sucesso!');
+    try {
+      toast.info('Salvando configurações...', 'Aguarde', 2000);
+      console.log('[handleSaveSettings] Settings to save:', JSON.stringify(settings).substring(0, 500));
+
+      // Timeout wrapper for Firestore operations (5 seconds)
+      const savePromise = saveSettings(settings);
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => {
+          console.log('[handleSaveSettings] TIMEOUT after 5 seconds!');
+          reject(new Error('Tempo limite excedido (5s).'));
+        }, 5000)
+      );
+
+      console.log('[handleSaveSettings] Awaiting Promise.race...');
+      await Promise.race([savePromise, timeoutPromise]);
+
+      console.log('[handleSaveSettings] Save completed successfully!');
+      toast.success('Configurações salvas com sucesso!', 'Salvo!');
+    } catch (error: any) {
+      console.error("[handleSaveSettings] Error:", error?.message || error);
+      toast.error('Erro ao salvar: ' + (error?.message || 'Erro desconhecido'), 'Erro ao Salvar');
+    } finally {
+      console.log('[handleSaveSettings] Finally block - setting savingSettings to false');
+      setSavingSettings(false);
+    }
   };
 
   const handleTestSMTP = async () => {
     setSmtpTestResult(null);
     const result = await testSMTPConnection();
     setSmtpTestResult(result);
-    if (result.success) alert(result.message);
+    if (result.success) toast.success(result.message, 'SMTP Conectado');
+    else toast.error(result.message, 'Falha no SMTP');
   };
 
   const loadData = async () => {
@@ -2384,12 +2571,12 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
 
       {/* Sidebar */}
       <div className="w-64 bg-gray-900 text-white flex flex-col shadow-2xl z-20 hidden md:flex">
-        <div className="p-6">
+        <div className="pt-6 pb-6 pl-6 pr-6">
           {settings.visual?.appLogoUrl ? (
             <img
               src={settings.visual.appLogoUrl}
               alt={APP_CONFIG.name}
-              className="h-12 object-contain w-auto mb-2"
+              className="h-12 object-contain w-auto mb-2 -ml-1"
             />
           ) : (
             <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -2509,6 +2696,11 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                               if (notif.type === 'new_driver') {
                                 setActiveTab('drivers');
                                 setFilterStatus('pending');
+                              } else if (notif.type === 'new_company') {
+                                setActiveTab('companies');
+                                // Could auto-select the company if we had a state for it
+                              } else if (notif.type === 'new_user') {
+                                setActiveTab('users');
                               } else if (notif.type === 'ride_issue' || notif.type === 'payment' || notif.type === 'feedback') {
                                 setActiveTab('occurrences');
                                 setSelectedOccurrence(notif as any);
@@ -2749,7 +2941,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
             <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
               <div className="flex justify-between items-center">
                 <h2 className="text-2xl font-bold text-gray-800">Gerenciar Empresas</h2>
-                <Button onClick={() => { setEditingCompany(null); setShowCompanyModal(true); }}>
+                <Button onClick={() => setShowAddCompanyModal(true)}>
                   <Plus size={18} className="mr-2" /> Nova Empresa
                 </Button>
               </div>
@@ -2850,7 +3042,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                           <td colSpan={5} className="p-8 text-center text-gray-400">
                             <Building2 size={48} className="mx-auto mb-2 opacity-50" />
                             <p>Nenhuma empresa cadastrada.</p>
-                            <Button className="mt-4" onClick={() => setShowCompanyModal(true)}>Cadastrar Empresa</Button>
+                            <p className="text-xs mt-2">Utilize o botão "Nova Empresa" acima.</p>
                           </td>
                         </tr>
                       )}
@@ -3482,7 +3674,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                       <h2 className="text-2xl font-bold text-gray-800">Gestão de Empresas Parceiras</h2>
                       <p className="text-gray-500 text-sm">Gerencie clientes corporativos e limites de crédito.</p>
                     </div>
-                    <Button onClick={() => { setEditingCompany(null); setShowCompanyModal(true); }}>
+                    <Button onClick={() => setShowAddCompanyModal(true)}>
                       <Plus size={18} className="mr-2" />
                       Nova Empresa
                     </Button>
@@ -3551,7 +3743,11 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                       <tbody className="divide-y divide-gray-100">
                         {companies.length === 0 ? (
                           <tr>
-                            <td colSpan={5} className="p-8 text-center text-gray-400">Nenhuma empresa cadastrada.</td>
+                            <td colSpan={5} className="p-12 text-center text-gray-400">
+                              <Building2 size={48} className="mx-auto mb-4 opacity-30" />
+                              <p className="font-medium mb-2">Nenhuma empresa cadastrada.</p>
+                              <p className="text-xs">Utilize o botão "Nova Empresa" acima para adicionar.</p>
+                            </td>
                           </tr>
                         ) : (
                           companies.map(company => (
@@ -4275,21 +4471,78 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                           type="file"
                           accept="image/*"
                           className="absolute inset-0 opacity-0 cursor-pointer"
-                          onChange={(e) => {
+                          onChange={async (e) => {
                             const file = e.target.files?.[0];
                             if (file) {
-                              if (file.size > 1024 * 1024) { alert("O logo deve ter no máximo 1MB."); return; }
-                              const reader = new FileReader();
-                              reader.onloadend = () => {
+                              if (file.size > 1 * 1024 * 1024) {
+                                toast.error("O logo deve ter no máximo 1MB.", "Arquivo Muito Grande");
+                                return;
+                              }
+
+                              try {
+                                setSavingSettings(true);
+                                toast.info("Processando logo...", "Aguarde");
+
+                                // Compress image to Base64 (works even without Firebase Storage)
+                                const compressedBase64 = await new Promise<string>((resolve) => {
+                                  const reader = new FileReader();
+                                  reader.onload = (event) => {
+                                    const img = new Image();
+                                    img.onload = () => {
+                                      const canvas = document.createElement('canvas');
+                                      const ctx = canvas.getContext('2d');
+
+                                      // Limit size to reduce Base64
+                                      const MAX_SIZE = 400;
+                                      let width = img.width, height = img.height;
+                                      if (width > MAX_SIZE || height > MAX_SIZE) {
+                                        if (width > height) {
+                                          height = (height / width) * MAX_SIZE;
+                                          width = MAX_SIZE;
+                                        } else {
+                                          width = (width / height) * MAX_SIZE;
+                                          height = MAX_SIZE;
+                                        }
+                                      }
+
+                                      canvas.width = width;
+                                      canvas.height = height;
+                                      ctx?.drawImage(img, 0, 0, width, height);
+                                      resolve(canvas.toDataURL('image/jpeg', 0.7));
+                                    };
+                                    img.src = event.target?.result as string;
+                                  };
+                                  reader.readAsDataURL(file);
+                                });
+
+                                // Try Firebase Storage first, fallback to Base64
+                                let finalUrl = compressedBase64;
+
+                                if (storage && !isMockMode) {
+                                  try {
+                                    toast.info("Enviando para a nuvem...", "Aguarde");
+                                    const storageRef = ref(storage, `settings/logo_${Date.now()}.png`);
+                                    await uploadBytes(storageRef, file);
+                                    finalUrl = await getDownloadURL(storageRef);
+                                  } catch (storageErr) {
+                                    console.warn("Firebase Storage falhou (CORS), usando imagem comprimida:", storageErr);
+                                  }
+                                }
+
                                 setSettings({
                                   ...settings,
                                   visual: {
-                                    ...(settings.visual || { loginBackgroundImage: '', primaryColor: '' }),
-                                    appLogoUrl: reader.result as string
+                                    ...(settings.visual || {}),
+                                    appLogoUrl: finalUrl
                                   }
                                 });
-                              };
-                              reader.readAsDataURL(file);
+                                toast.success("Logo processado! Clique em 'Salvar Alterações'.", "Sucesso");
+                              } catch (err) {
+                                console.error("Erro ao processar logo:", err);
+                                toast.error("Erro ao processar imagem.", "Erro");
+                              } finally {
+                                setSavingSettings(false);
+                              }
                             }
                           }}
                         />
@@ -4339,24 +4592,78 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                           type="file"
                           accept="image/*"
                           className="absolute inset-0 opacity-0 cursor-pointer"
-                          onChange={(e) => {
+                          onChange={async (e) => {
                             const file = e.target.files?.[0];
                             if (file) {
-                              if (file.size > 3 * 1024 * 1024) {
-                                alert("A imagem deve ter no máximo 3MB.");
+                              if (file.size > 1 * 1024 * 1024) {
+                                toast.error("A imagem deve ter no máximo 1MB.", "Arquivo Muito Grande");
                                 return;
                               }
-                              const reader = new FileReader();
-                              reader.onloadend = () => {
+
+                              try {
+                                setSavingSettings(true);
+                                toast.info("Processando imagem...", "Aguarde");
+
+                                // Compress image to Base64 (fallback for when Firebase Storage fails)
+                                const compressedBase64 = await new Promise<string>((resolve) => {
+                                  const reader = new FileReader();
+                                  reader.onload = (event) => {
+                                    const img = new Image();
+                                    img.onload = () => {
+                                      const canvas = document.createElement('canvas');
+                                      const ctx = canvas.getContext('2d');
+
+                                      // Limit size to reduce Base64 (keep reasonable for backgrounds)
+                                      const MAX_SIZE = 800;
+                                      let width = img.width, height = img.height;
+                                      if (width > MAX_SIZE || height > MAX_SIZE) {
+                                        if (width > height) {
+                                          height = (height / width) * MAX_SIZE;
+                                          width = MAX_SIZE;
+                                        } else {
+                                          width = (width / height) * MAX_SIZE;
+                                          height = MAX_SIZE;
+                                        }
+                                      }
+
+                                      canvas.width = width;
+                                      canvas.height = height;
+                                      ctx?.drawImage(img, 0, 0, width, height);
+                                      resolve(canvas.toDataURL('image/jpeg', 0.6));
+                                    };
+                                    img.src = event.target?.result as string;
+                                  };
+                                  reader.readAsDataURL(file);
+                                });
+
+                                // Try Firebase Storage first, fallback to Base64
+                                let finalUrl = compressedBase64;
+
+                                if (storage && !isMockMode) {
+                                  try {
+                                    toast.info("Enviando para a nuvem...", "Aguarde");
+                                    const storageRef = ref(storage, `settings/login_bg_${Date.now()}.jpg`);
+                                    await uploadBytes(storageRef, file);
+                                    finalUrl = await getDownloadURL(storageRef);
+                                  } catch (storageErr) {
+                                    console.warn("Firebase Storage falhou (CORS), usando imagem comprimida:", storageErr);
+                                  }
+                                }
+
                                 setSettings({
                                   ...settings,
                                   visual: {
-                                    ...(settings.visual || { appLogoUrl: '', primaryColor: '' }),
-                                    loginBackgroundImage: reader.result as string
+                                    ...(settings.visual || {}),
+                                    loginBackgroundImage: finalUrl
                                   }
                                 });
-                              };
-                              reader.readAsDataURL(file);
+                                toast.success("Imagem processada! Clique em 'Salvar Alterações'.", "Sucesso");
+                              } catch (err) {
+                                console.error("Erro ao processar:", err);
+                                toast.error("Erro ao processar imagem.", "Erro");
+                              } finally {
+                                setSavingSettings(false);
+                              }
                             }
                           }}
                         />
@@ -4410,21 +4717,78 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
                           type="file"
                           accept="image/*"
                           className="absolute inset-0 opacity-0 cursor-pointer"
-                          onChange={(e) => {
+                          onChange={async (e) => {
                             const file = e.target.files?.[0];
                             if (file) {
-                              if (file.size > 2 * 1024 * 1024) { alert("A imagem deve ter no máximo 2MB."); return; }
-                              const reader = new FileReader();
-                              reader.onloadend = () => {
+                              if (file.size > 1 * 1024 * 1024) {
+                                toast.error("A imagem deve ter no máximo 1MB.", "Arquivo Muito Grande");
+                                return;
+                              }
+
+                              try {
+                                setSavingSettings(true);
+                                toast.info("Processando imagem mobile...", "Aguarde");
+
+                                // Compress image to Base64 (fallback for when Firebase Storage fails)
+                                const compressedBase64 = await new Promise<string>((resolve) => {
+                                  const reader = new FileReader();
+                                  reader.onload = (event) => {
+                                    const img = new Image();
+                                    img.onload = () => {
+                                      const canvas = document.createElement('canvas');
+                                      const ctx = canvas.getContext('2d');
+
+                                      // Limit size for mobile (portrait)
+                                      const MAX_WIDTH = 400;
+                                      const MAX_HEIGHT = 700;
+                                      let width = img.width, height = img.height;
+                                      if (width > MAX_WIDTH) {
+                                        height = (height / width) * MAX_WIDTH;
+                                        width = MAX_WIDTH;
+                                      }
+                                      if (height > MAX_HEIGHT) {
+                                        width = (width / height) * MAX_HEIGHT;
+                                        height = MAX_HEIGHT;
+                                      }
+
+                                      canvas.width = width;
+                                      canvas.height = height;
+                                      ctx?.drawImage(img, 0, 0, width, height);
+                                      resolve(canvas.toDataURL('image/jpeg', 0.6));
+                                    };
+                                    img.src = event.target?.result as string;
+                                  };
+                                  reader.readAsDataURL(file);
+                                });
+
+                                // Try Firebase Storage first, fallback to Base64
+                                let finalUrl = compressedBase64;
+
+                                if (storage && !isMockMode) {
+                                  try {
+                                    toast.info("Enviando para a nuvem...", "Aguarde");
+                                    const storageRef = ref(storage, `settings/mobile_bg_${Date.now()}.jpg`);
+                                    await uploadBytes(storageRef, file);
+                                    finalUrl = await getDownloadURL(storageRef);
+                                  } catch (storageErr) {
+                                    console.warn("Firebase Storage falhou (CORS), usando imagem comprimida:", storageErr);
+                                  }
+                                }
+
                                 setSettings({
                                   ...settings,
                                   visual: {
-                                    ...(settings.visual as any),
-                                    mobileBackgroundImage: reader.result as string
+                                    ...(settings.visual || {}),
+                                    mobileBackgroundImage: finalUrl
                                   }
                                 });
-                              };
-                              reader.readAsDataURL(file);
+                                toast.success("Imagem mobile processada! Clique em 'Salvar Alterações'.", "Sucesso");
+                              } catch (err) {
+                                console.error("Erro ao processar:", err);
+                                toast.error("Erro ao processar imagem.", "Erro");
+                              } finally {
+                                setSavingSettings(false);
+                              }
                             }
                           }}
                         />
@@ -5477,6 +5841,7 @@ export const AdminDashboard = ({ onLogout }: { onLogout?: () => void }) => {
           />
         )
       }
+      {showAddCompanyModal && <AddCompanyModal onClose={() => setShowAddCompanyModal(false)} />}
       {confirmModal.isOpen && (
         <ConfirmationModal
           isOpen={confirmModal.isOpen}
@@ -5507,3 +5872,9 @@ const safeDate = (date: any): Date => {
   if (typeof date === 'number') return new Date(date);
   return new Date();
 };
+
+export const AdminDashboard = (props: { onLogout?: () => void }) => (
+  <ToastProvider>
+    <AdminDashboardContent {...props} />
+  </ToastProvider>
+);

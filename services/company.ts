@@ -1,5 +1,5 @@
 import { Company } from '../types';
-import { db } from './firebase';
+import { db, isMockMode } from './firebase';
 import { collection, doc, setDoc, getDoc, getDocs, onSnapshot, query, where, updateDoc } from 'firebase/firestore';
 
 const COLLECTION_NAME = 'companies';
@@ -237,5 +237,18 @@ export const findCompanyByIdentifier = async (identifier: string): Promise<Compa
     } catch (error) {
         console.error("Error finding company:", error);
         return null;
+    }
+};
+
+export const checkCompanyExists = async (cnpj: string): Promise<boolean> => {
+    if (isMockMode || !db) return false;
+
+    try {
+        const q = query(collection(db, COLLECTION_NAME), where('cnpj', '==', cnpj));
+        const snapshot = await getDocs(q);
+        return !snapshot.empty;
+    } catch (e) {
+        console.error("Error checking company existence", e);
+        return false;
     }
 };

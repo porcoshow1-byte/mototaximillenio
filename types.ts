@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type Role = 'landing' | 'user' | 'driver' | 'driver-register' | 'admin' | 'selection' | 'company';
+export type Role = 'user' | 'driver' | 'admin' | 'company' | 'driver-register' | 'selection';
 
 export enum ServiceType {
   MOTO_TAXI = 'MOTO_TAXI',
@@ -48,6 +48,7 @@ export interface Company {
     autoBlockOverdue: boolean;
     blockToleranceDays: number;
   };
+  allowInvoicing?: boolean;
 }
 
 export interface User {

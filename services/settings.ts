@@ -74,7 +74,7 @@ export interface SystemSettings {
     smtp: SMTPSettings;
 }
 
-const DEFAULT_SETTINGS: SystemSettings = {
+export const DEFAULT_SETTINGS: SystemSettings = {
     basePrice: 5.00,
     pricePerKm: 2.00,
     platformFee: 20,
@@ -129,30 +129,99 @@ const DEFAULT_SETTINGS: SystemSettings = {
     }
 };
 
+import { db } from './firebase';
+import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+
 const STORAGE_KEY = 'motoja_system_settings';
 
-export const getSettings = (): SystemSettings => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-        try {
-            const parsed = JSON.parse(saved);
-            // Deep merge with defaults to ensure all keys exist (especially new nested ones)
-            return {
-                ...DEFAULT_SETTINGS,
-                ...parsed,
-                paymentGateway: { ...DEFAULT_SETTINGS.paymentGateway, ...(parsed.paymentGateway || {}) },
-                n8n: { ...DEFAULT_SETTINGS.n8n, ...(parsed.n8n || {}) },
-                smtp: { ...DEFAULT_SETTINGS.smtp, ...(parsed.smtp || {}) },
-                visual: { ...DEFAULT_SETTINGS.visual, ...(parsed.visual || {}) },
-            };
-        } catch (e) {
-            console.error('Failed to parse settings', e);
-            return DEFAULT_SETTINGS;
+const getSettingsDoc = () => {
+    if (!db) return null;
+    return doc(db, 'settings', 'general');
+};
+/**
+ * Fetch settings from Firestore.
+ * Falls back to DEFAULTS if not found.
+ */
+export const getSettings = async (): Promise<SystemSettings> => {
+    try {
+        const docRef = getSettingsDoc();
+        if (docRef) {
+            const docSnap = await getDoc(docRef);
+
+            if (docSnap.exists()) {
+                const data = docSnap.data() as Partial<SystemSettings>;
+                return mergeWithDefaults(data);
+            }
         }
+    } catch (e) {
+        console.warn('Error fetching settings from Firestore:', e);
     }
+
     return DEFAULT_SETTINGS;
 };
 
-export const saveSettings = (settings: SystemSettings): void => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+/**
+ * Validates and merges data with default settings
+ */
+const mergeWithDefaults = (data: any): SystemSettings => {
+    return {
+        ...DEFAULT_SETTINGS,
+        ...data,
+        paymentGateway: { ...DEFAULT_SETTINGS.paymentGateway, ...(data.paymentGateway || {}) },
+        n8n: { ...DEFAULT_SETTINGS.n8n, ...(data.n8n || {}) },
+        smtp: { ...DEFAULT_SETTINGS.smtp, ...(data.smtp || {}) },
+        visual: { ...DEFAULT_SETTINGS.visual, ...(data.visual || {}) },
+    };
 };
+
+/**
+ * Save settings to Firestore
+ * Images are compressed Base64 or Firebase Storage URLs.
+ */
+export const saveSettings = async (settings: SystemSettings): Promise<void> => {
+    const docRef = getSettingsDoc();
+    if (!docRef) {
+        throw new Error('Firestore não disponível. Configure as variáveis de ambiente do Firebase.');
+    }
+
+    try {
+        const jsonStr = JSON.stringify(settings);
+        const sizeKB = Math.round(jsonStr.length / 1024);
+        console.log(`[Settings] Document size: ${sizeKB}KB`);
+
+        if (sizeKB > 900) {
+            console.warn(`[Settings] Document is very large (${sizeKB}KB), may exceed 1MB Firestore limit`);
+        }
+
+        await setDoc(docRef, settings);
+        console.log('[Settings] Saved to Firestore successfully');
+    } catch (e: any) {
+        console.error('[Settings] Error saving to Firestore:', e);
+        throw new Error('Erro ao salvar: ' + (e?.message || 'Erro desconhecido'));
+    }
+};
+
+/**
+ * Real-time settings subscription
+ */
+export const subscribeToSettings = (callback: (settings: SystemSettings) => void) => {
+    const docRef = getSettingsDoc();
+    if (!docRef) {
+        console.warn('Firestore not available for subscription.');
+        callback(DEFAULT_SETTINGS);
+        return () => { };
+    }
+
+    return onSnapshot(docRef, (doc) => {
+        if (doc.exists()) {
+            const data = doc.data();
+            const merged = mergeWithDefaults(data);
+            // Update cache silently
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+            callback(merged);
+        } else {
+            callback(DEFAULT_SETTINGS);
+        }
+    });
+};
+

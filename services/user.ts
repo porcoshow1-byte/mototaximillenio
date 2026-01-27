@@ -1,5 +1,5 @@
 import { db, isMockMode } from './firebase';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { User, Driver } from '../types';
 
 export const USERS_COLLECTION = 'users';
@@ -11,12 +11,54 @@ interface InitialUserData {
   vehicle?: string;
   plate?: string;
   cnhUrl?: string;
+  address?: string;
+  addressComponents?: any;
 }
+
+// Check if user already exists by specific field
+export const checkUniqueness = async (field: 'cpf' | 'phone' | 'email', value: string): Promise<{ exists: boolean, message?: string }> => {
+  if (isMockMode || !db || !value) return { exists: false };
+
+  // Skip unique check for empty/incomplete values during typing
+  if (field === 'cpf' && value.length < 11) return { exists: false };
+  if (field === 'phone' && value.length < 10) return { exists: false };
+  if (field === 'email' && !value.includes('@')) return { exists: false };
+
+  const usersRef = collection(db, USERS_COLLECTION);
+  const q = query(usersRef, where(field, '==', value));
+
+  try {
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      const msgs = {
+        cpf: 'Este CPF já está cadastrado.',
+        phone: 'Este telefone já está cadastrado.',
+        email: 'Este e-mail já está cadastrado.'
+      };
+      return { exists: true, message: msgs[field] };
+    }
+    return { exists: false };
+  } catch (err) {
+    console.error(`Error checking uniqueness for ${field}:`, err);
+    return { exists: false };
+  }
+};
+
+// Deprecated: Keeping for backward compatibility if needed, but redirects to new function
+export const checkUserExists = async (cpf: string, phone: string): Promise<{ exists: boolean, field: 'cpf' | 'phone' | null }> => {
+  const cpfCheck = await checkUniqueness('cpf', cpf);
+  if (cpfCheck.exists) return { exists: true, field: 'cpf' };
+
+  const phoneCheck = await checkUniqueness('phone', phone);
+  if (phoneCheck.exists) return { exists: true, field: 'phone' };
+
+  return { exists: false, field: null };
+};
 
 export const getOrCreateUserProfile = async (
   uid: string,
   email: string,
-  role: 'user' | 'driver',
+  role: 'user' | 'driver' | 'company',
   initialData?: InitialUserData
 ): Promise<User | Driver> => {
 
@@ -43,6 +85,8 @@ export const getOrCreateUserProfile = async (
       email: email,
       phone: initialData?.phone || '',
       cpf: initialData?.cpf || '',
+      address: initialData?.address || '',
+      addressComponents: initialData?.addressComponents,
       rating: 5.0,
       avatar: `https://ui-avatars.com/api/?background=${role === 'user' ? 'orange' : '000'}&color=fff&name=${displayName}`,
       createdAt: Date.now(),

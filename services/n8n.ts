@@ -13,7 +13,7 @@ interface WebhookPayload {
  * Dispara um webhook para o N8N se a integração estiver ativa
  */
 export const triggerN8NWebhook = async (event: WebhookEvent, data: any) => {
-    const settings = getSettings();
+    const settings = await getSettings();
 
     if (!settings.n8n.enabled || !settings.n8n.webhookUrl) {
         return;

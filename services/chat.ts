@@ -1,46 +1,51 @@
-import { db } from './firebase';
-import { collection, addDoc, onSnapshot, query, orderBy, serverTimestamp } from 'firebase/firestore';
+import { rtdb } from './firebase';
+import { ref, push, onValue, off, serverTimestamp } from 'firebase/database';
 import { ChatMessage } from '../types';
 
-const RIDES_COLLECTION = 'rides';
-const MESSAGES_COLLECTION = 'messages';
+const CHATS_PATH = 'chats';
 
 export const sendMessage = async (rideId: string, senderId: string, text: string) => {
-  if (!text.trim() || !db) return;
+  if (!text.trim() || !rtdb) return;
 
   try {
-    await addDoc(collection(db, RIDES_COLLECTION, rideId, MESSAGES_COLLECTION), {
-      rideId,
+    const chatRef = ref(rtdb, `${CHATS_PATH}/${rideId}`);
+    await push(chatRef, {
       senderId,
       text,
       createdAt: serverTimestamp()
     });
   } catch (error) {
-    console.error("Erro ao enviar mensagem:", error);
+    console.error("Erro ao enviar mensagem (RTDB):", error);
     throw error;
   }
 };
 
 export const subscribeToChat = (rideId: string, onUpdate: (messages: ChatMessage[]) => void) => {
-  if (!db) return () => {};
+  if (!rtdb) return () => { };
 
-  const q = query(
-    collection(db, RIDES_COLLECTION, rideId, MESSAGES_COLLECTION),
-    orderBy('createdAt', 'asc')
-  );
+  const chatRef = ref(rtdb, `${CHATS_PATH}/${rideId}`);
 
-  return onSnapshot(q, (snapshot) => {
+  const onValueChange = onValue(chatRef, (snapshot) => {
+    const data = snapshot.val();
     const messages: ChatMessage[] = [];
-    snapshot.forEach((doc) => {
-      const data = doc.data();
-      messages.push({
-        id: doc.id,
-        rideId: data.rideId,
-        senderId: data.senderId,
-        text: data.text,
-        createdAt: data.createdAt ? (data.createdAt as any).seconds * 1000 : Date.now()
+
+    if (data) {
+      Object.entries(data).forEach(([key, value]: [string, any]) => {
+        messages.push({
+          id: key,
+          rideId: rideId,
+          senderId: value.senderId,
+          text: value.text,
+          createdAt: value.createdAt || Date.now()
+        });
       });
-    });
+    }
+
+    // Ordenar por data (opcional, RTDB já retorna ordenado se inserido sequencialmente, mas garantimos aqui)
+    messages.sort((a, b) => a.createdAt - b.createdAt);
+
     onUpdate(messages);
   });
+
+  return () => off(chatRef, 'value', onValueChange);
 };

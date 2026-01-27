@@ -19,7 +19,7 @@ export const sendEmail = async (
     body: string, // HTML or Text
     isHtml: boolean = true
 ): Promise<EmailResult> => {
-    const settings = getSettings();
+    const settings = await getSettings();
     const { smtp } = settings;
 
     console.group('📧 SMTP Email Simulation');
@@ -66,7 +66,7 @@ export const sendEmail = async (
 
 // Helper to test connection
 export const testSMTPConnection = async (): Promise<EmailResult> => {
-    const settings = getSettings();
+    const settings = await getSettings();
     return sendEmail(
         settings.companyEmail || 'admin@motoja.com',
         'Teste de Conexão SMTP - MotoJá',

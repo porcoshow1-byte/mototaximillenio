@@ -20,7 +20,7 @@ export const generateInvoicePayment = async (
     amount: number,
     payerEmail: string
 ): Promise<InvoicePaymentResult> => {
-    const settings = getSettings();
+    const settings = await getSettings();
     const provider = settings.paymentGateway.provider;
     const description = `Fatura MotoJá #${invoiceId} - Empresa ${companyId}`;
 

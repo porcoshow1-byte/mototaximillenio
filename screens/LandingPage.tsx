@@ -62,7 +62,10 @@ export const LandingPage = ({ onStartDemo }: { onStartDemo: () => void }) => {
               >
                 Acessar Demonstração <ArrowRight size={20} />
               </button>
-              <button className="px-8 py-4 bg-white text-gray-700 border border-gray-200 rounded-2xl font-bold text-lg hover:bg-gray-50 transition-all flex items-center gap-2">
+              <button
+                onClick={() => window.open('https://wa.me/5511913372770', '_blank')}
+                className="px-8 py-4 bg-white text-gray-700 border border-gray-200 rounded-2xl font-bold text-lg hover:bg-gray-50 transition-all flex items-center gap-2"
+              >
                 Falar com Consultor
               </button>
             </div>
