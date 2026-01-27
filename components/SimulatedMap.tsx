@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { GoogleMap, useJsApiLoader, Marker as GoogleMarker, DirectionsRenderer } from '@react-google-maps/api';
-import { MapContainer, TileLayer, Marker as LeafletMarker, Popup, Polyline, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker as LeafletMarker, Popup, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
@@ -60,6 +60,8 @@ interface MapProps {
   waypoints?: Coords[];
   driverLocation?: Coords | null;
   drivers?: Driver[];
+  recenterTrigger?: number;
+  onCameraChange?: (coords: Coords) => void;
 }
 
 const mapContainerStyle = {
@@ -75,8 +77,19 @@ const defaultCenter = {
 
 // --- LEAFLET COMPONENT (FREE / OPTIMIZED) ---
 
-const LeafletMapInner: React.FC<MapProps> = ({ showDriver, showRoute, origin, destination, driverLocation, drivers, waypoints }) => {
+// --- LEAFLET COMPONENT (FREE / OPTIMIZED) ---
+
+const LeafletMapInner: React.FC<MapProps> = ({ showDriver, showRoute, origin, destination, driverLocation, drivers, waypoints, recenterTrigger, onCameraChange }) => {
   const map = useMap();
+
+  useMapEvents({
+    moveend: () => {
+      if (onCameraChange) {
+        const center = map.getCenter();
+        onCameraChange({ lat: center.lat, lng: center.lng });
+      }
+    }
+  });
 
   // Auto-fit bounds
   useEffect(() => {
@@ -160,7 +173,96 @@ const LeafletMapInner: React.FC<MapProps> = ({ showDriver, showRoute, origin, de
 
 // --- GOOGLE MAPS COMPONENT (LEGACY / PRECISE) ---
 
-const GoogleMapInner: React.FC<MapProps> = ({ showDriver, showRoute, status, origin, destination, driverLocation, drivers, waypoints }) => {
+// ... (imports remain the same)
+
+// CUSTOM GOOGLE MAPS STYLE (Clean/Uber-like)
+const GOOGLE_MAP_STYLES = [
+  {
+    "featureType": "administrative",
+    "elementType": "geometry",
+    "stylers": [{ "visibility": "off" }]
+  },
+  {
+    "featureType": "poi",
+    "stylers": [{ "visibility": "off" }]
+  },
+  {
+    "featureType": "road",
+    "elementType": "labels.icon",
+    "stylers": [{ "visibility": "off" }]
+  },
+  {
+    "featureType": "transit",
+    "stylers": [{ "visibility": "off" }]
+  },
+  {
+    "featureType": "water",
+    "elementType": "labels.text.fill",
+    "stylers": [{ "color": "#515c6d" }]
+  },
+  {
+    "featureType": "water",
+    "elementType": "labels.text.stroke",
+    "stylers": [{ "color": "#17263c" }]
+  },
+  // Customize colors to match "Uni Mobilidade" screenshot
+  {
+    "featureType": "water",
+    "elementType": "geometry",
+    "stylers": [{ "color": "#e9e9e9" }, { "lightness": 17 }]
+  },
+  {
+    "featureType": "landscape",
+    "elementType": "geometry",
+    "stylers": [{ "color": "#f5f5f5" }, { "lightness": 20 }]
+  },
+  {
+    "featureType": "road.highway",
+    "elementType": "geometry.fill",
+    "stylers": [{ "color": "#ffffff" }, { "lightness": 17 }]
+  },
+  {
+    "featureType": "road.highway",
+    "elementType": "geometry.stroke",
+    "stylers": [{ "color": "#ffffff" }, { "lightness": 29 }, { "weight": 0.2 }]
+  },
+  {
+    "featureType": "road.arterial",
+    "elementType": "geometry",
+    "stylers": [{ "color": "#ffffff" }, { "lightness": 18 }]
+  },
+  {
+    "featureType": "road.local",
+    "elementType": "geometry",
+    "stylers": [{ "color": "#ffffff" }, { "lightness": 16 }]
+  },
+  {
+    "featureType": "poi",
+    "elementType": "geometry",
+    "stylers": [{ "color": "#f5f5f5" }, { "lightness": 21 }]
+  },
+  {
+    "featureType": "poi.park",
+    "elementType": "geometry",
+    "stylers": [{ "color": "#dedede" }, { "lightness": 21 }]
+  },
+  {
+    "elementType": "labels.text.stroke",
+    "stylers": [{ "visibility": "on" }, { "color": "#ffffff" }, { "lightness": 16 }]
+  },
+  {
+    "elementType": "labels.text.fill",
+    "stylers": [{ "saturation": 36 }, { "color": "#333333" }, { "lightness": 40 }]
+  },
+  {
+    "elementType": "labels.icon",
+    "stylers": [{ "visibility": "off" }]
+  }
+];
+
+// ... (LeafletMapInner remains the same)
+
+const GoogleMapInner: React.FC<MapProps> = ({ showDriver, showRoute, status, origin, destination, driverLocation, drivers, waypoints, recenterTrigger, onCameraChange }) => {
   const [map, setMap] = useState<any | null>(null);
   const [directionsResponse, setDirectionsResponse] = useState<any | null>(null);
 
@@ -288,11 +390,11 @@ const GoogleMapInner: React.FC<MapProps> = ({ showDriver, showRoute, status, ori
       map.panTo(driverLocation);
       map.setZoom(16);
     } else if (origin && !destination && !showRoute) {
-      // Modo Acompanhar Usuário (Home)
+      // Modo Acompanhar Usuário (Home) - Força recentralizar se trigger mudar
       map.panTo(origin);
       map.setZoom(15);
     }
-  }, [map, origin, destination, showRoute, drivers, driverLocation, showDriver]);
+  }, [map, origin, destination, showRoute, drivers, driverLocation, showDriver, recenterTrigger]);
 
   return (
     <GoogleMap
@@ -301,17 +403,27 @@ const GoogleMapInner: React.FC<MapProps> = ({ showDriver, showRoute, status, ori
       zoom={14}
       onLoad={onLoad}
       onUnmount={onUnmount}
+      onDragEnd={() => {
+        if (map && onCameraChange) {
+          const c = map.getCenter();
+          onCameraChange({ lat: c.lat(), lng: c.lng() });
+        }
+      }}
+      onIdle={() => {
+        if (map && onCameraChange) {
+          const c = map.getCenter();
+          onCameraChange({ lat: c.lat(), lng: c.lng() });
+        }
+      }}
       options={{
         disableDefaultUI: true,
-        zoomControl: false,
+        zoomControl: false, // Clean UI
         streetViewControl: false,
         mapTypeControl: false,
         fullscreenControl: false,
         rotateControl: false,
         clickableIcons: false,
-        styles: [
-          { featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] }
-        ]
+        styles: GOOGLE_MAP_STYLES
       }}
     >
       {/* User Marker (Origin) */}
@@ -388,15 +500,10 @@ const GoogleMapInner: React.FC<MapProps> = ({ showDriver, showRoute, status, ori
 // Componente Principal que gerencia o carregamento da API
 export const SimulatedMap: React.FC<MapProps> = (props) => {
   const apiKey = APP_CONFIG.googleMapsApiKey;
-  // Use Leaflet if specific config is set OR if Google Key is missing, to ensure map always works.
-  // We can add a toggle or logic here. For now, let's prefer Leaflet for visual map to save costs as per plan.
-  // But we still need Google API loaded for Places Autocomplete service used elsewhere? 
-  // No, Places service is used in logic, not map.
 
-  // STRATEGY: Load Google Script anyway because we need it for Geocoding/Places in `services/map.ts`.
-  // BUT render Leaflet for the visual map to save "Map Loads" quota.
-
-  const [useLeaflet, setUseLeaflet] = useState(true); // Default to Optimized Mode
+  // Use Leaflet by default is FALSE now, to show Google Map style requested by user
+  // If API key is missing, it will fallback to Leaflet automatically below.
+  const [useLeaflet, setUseLeaflet] = useState(false);
 
   const { isLoaded, loadError } = useJsApiLoader({
     id: 'google-map-script',
@@ -428,11 +535,12 @@ export const SimulatedMap: React.FC<MapProps> = (props) => {
         )}
 
         <div className="absolute bottom-1 right-1 z-[400] bg-white/80 px-1 rounded text-[10px] text-gray-500">
-          Optimized Map
+          OpenStreetMap (Free)
         </div>
       </div>
     )
   }
+  // ...
 
   // Fallback to Google Maps if Leaflet disabled
   if (loadError) {
