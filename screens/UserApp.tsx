@@ -1103,7 +1103,7 @@ export const UserApp = () => {
                 <span className="text-gray-500 font-bold text-lg">Buscar destino</span>
               </div>
 
-              <div className={`overflow-hidden transition-all duration-300 ${showRecent ? 'max-h-40 opacity-100 mb-8' : 'max-h-0 opacity-0 mb-0'}`}>
+              <div className={`overflow-hidden transition-all duration-300 ${showRecent ? 'max-h-40 opacity-100 mb-3' : 'max-h-0 opacity-0 mb-0'}`}>
                 <div
                   onClick={(e) => {
                     e.stopPropagation();
@@ -2416,13 +2416,14 @@ export const UserApp = () => {
 
             <div className="flex gap-3">
               <Button
+                variant="outline"
                 onClick={() => {
                   setEditingFavoriteId(null);
                   setEditingFavoriteLabel('');
                   setEditingFavoriteAddress('');
                   setEditingFavoriteCoords(null);
                 }}
-                className="flex-1 bg-gray-100 text-gray-700 hover:bg-gray-200"
+                className="flex-1 border-gray-300 text-gray-700 hover:bg-gray-50"
               >
                 Cancelar
               </Button>
