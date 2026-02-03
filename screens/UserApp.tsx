@@ -998,6 +998,7 @@ export const UserApp = () => {
           tripProfile={routeInfo ? { distance: routeInfo.distance, duration: routeInfo.duration } : undefined}
           onEditOrigin={() => setStep('select_dest')}
           onEditDestination={() => setStep('select_dest')}
+          isLoading={!originCoords && loadingLocation}
 
           recenterTrigger={recenterCount}
           onCameraChange={(coords, isUserInteraction) => {
@@ -1032,7 +1033,7 @@ export const UserApp = () => {
                 {/* The Pin */}
                 <div className="relative z-10 -mb-1 text-orange-600 drop-shadow-2xl filter transform transition-transform duration-300">
                   {/* Custom Lollipop Pin SVG */}
-                  <svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="block drop-shadow-xl">
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="block drop-shadow-xl">
                     {/* Stick */}
                     <rect x="11" y="10" width="2" height="14" rx="1" fill="currentColor" />
                     {/* Circle Head */}
