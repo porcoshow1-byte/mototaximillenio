@@ -1103,7 +1103,7 @@ export const UserApp = () => {
                 <span className="text-gray-500 font-bold text-lg">Buscar destino</span>
               </div>
 
-              <div className={`overflow-hidden transition-all duration-300 ${showRecent ? 'max-h-40 opacity-100 mb-1' : 'max-h-0 opacity-0 mb-0'}`}>
+              <div className={`overflow-hidden transition-all duration-300 ${showRecent ? 'max-h-40 opacity-100 mb-0' : 'max-h-0 opacity-0 mb-0'}`}>
                 <div
                   onClick={(e) => {
                     e.stopPropagation();
@@ -1122,7 +1122,7 @@ export const UserApp = () => {
               </div>
 
               {/* Bottom Nav */}
-              <div className="flex justify-between items-center border-t border-gray-100 pt-2 mt-0">
+              <div className="flex justify-between items-center border-t border-gray-100 pt-1 mt-0">
                 <div className="flex flex-col items-center gap-1 cursor-pointer text-orange-600">
                   <div className="bg-orange-50 p-2 rounded-full px-5">
                     <Home size={24} fill="currentColor" />

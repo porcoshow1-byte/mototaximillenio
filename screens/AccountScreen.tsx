@@ -28,7 +28,7 @@ export const AccountScreen: React.FC<AccountScreenProps> = ({ user, onBack, onNa
     return (
         <div className="h-full bg-gray-50 flex flex-col font-sans animate-fade-in">
             {/* Header Branco com Safe Area Correction */}
-            <div className="bg-white p-4 pt-safe-12 pb-6 shadow-sm z-10 sticky top-0">
+            <div className="bg-white p-4 pt-safe-24 pb-6 shadow-sm z-10 sticky top-0">
                 <div className="flex items-center gap-3 mb-4">
                     <button onClick={onBack} className="p-2 -ml-2 text-gray-700 hover:bg-gray-100 rounded-full">
                         <ArrowLeft size={24} />
