@@ -6,7 +6,7 @@ import {
   RefreshCw, Package, Bike, Plus, Trash2, HelpCircle, ChevronRight,
   FileQuestion, ExternalLink, Crosshair, ArrowDownUp, Navigation, Lock,
   GripVertical, ShieldCheck, Eye, EyeOff, Map as MapIcon, Copy, QrCode,
-  Ticket, Bell, Home, Briefcase, Pencil, Building2, AlertTriangle, Banknote, UserCircle, Heart, Smartphone, MessageCircle
+  Ticket, Bell, Home, Briefcase, Pencil, Building2, AlertTriangle, Banknote, UserCircle, Heart, Smartphone, MessageCircle, Pin
 } from 'lucide-react';
 import { PaymentOptionsScreen } from './PaymentOptionsScreen';
 import { logout } from '../services/auth';
@@ -1001,6 +1001,9 @@ export const UserApp = () => {
 
           recenterTrigger={recenterCount}
           onCameraChange={(coords, isUserInteraction) => {
+            // Update temp coords for picker
+            handleCameraChange(coords);
+
             // Only show GPS button if moved by USER interaction (drag)
             if (isUserInteraction) {
               setMapMoved(true);
@@ -1029,7 +1032,7 @@ export const UserApp = () => {
                 {/* The Pin */}
                 <div className="relative z-10 -mb-1 text-orange-600 drop-shadow-2xl filter transform transition-transform duration-300">
                   {/* Solid Fill Pin */}
-                  <MapPin size={56} fill="currentColor" strokeWidth={0} className="block" />
+                  <Pin size={56} fill="currentColor" strokeWidth={0} className="block" />
 
                   {/* Glare/Reflection (Simulating the image style) */}
                   <div className="absolute top-2 right-3 w-3 h-2 bg-white/40 rounded-full blur-[1px] rotate-45"></div>
