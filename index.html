@@ -3,7 +3,8 @@
 
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>MotoJá - A Revolução do Mototáxi</title>
   <meta property="og:title" content="MotoJá - A Revolução do Mototáxi" />
   <meta property="og:description" content="Solicite seu mototáxi com segurança e rapidez. Baixe o app agora!" />
@@ -159,6 +160,23 @@
         transform: translateX(100%);
         opacity: 0;
       }
+    }
+
+    /* Safe Area Utilities */
+    .pt-safe {
+      padding-top: env(safe-area-inset-top);
+    }
+
+    .pb-safe {
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    .pt-safe-12 {
+      padding-top: calc(3rem + env(safe-area-inset-top));
+    }
+
+    .pb-safe-4 {
+      padding-bottom: calc(1rem + env(safe-area-inset-bottom));
     }
   </style>
   <link rel="manifest" href="/manifest.json">
