@@ -25,25 +25,32 @@ export const ProfileScreen = ({ user, isDriver, onBack, onSave, userLocation }: 
     plate: isDriver ? (user as Driver).plate : '',
   });
   const [loading, setLoading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleImagePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       try {
-        setLoading(true);
-        const url = await uploadFile(file, `avatars/${user.id}_${Date.now()}`);
+        setIsUploading(true);
+        // Use a timeout race to prevent infinite hanging
+        const uploadPromise = uploadFile(file, `avatars/${user.id}_${Date.now()}`);
+        const timeoutPromise = new Promise<string>((_, reject) =>
+          setTimeout(() => reject(new Error("Timeout")), 15000)
+        );
+
+        const url = await Promise.race([uploadPromise, timeoutPromise]);
         setFormData(prev => ({ ...prev, avatar: url }));
       } catch (error) {
         console.error("Profile image upload error:", error);
-        // Fallback: Use base64 locally if Firebase fails
+        // Fallback: Use base64 locally if Firebase fails or timeouts
         const reader = new FileReader();
         reader.onloadend = () => {
           setFormData(prev => ({ ...prev, avatar: reader.result as string }));
         };
         reader.readAsDataURL(file);
       } finally {
-        setLoading(false);
+        setIsUploading(false);
       }
     }
   };
@@ -130,20 +137,16 @@ export const ProfileScreen = ({ user, isDriver, onBack, onSave, userLocation }: 
           />
 
           <div className="space-y-1">
-            <label className="text-sm font-medium text-gray-700 block">Endereço Residencial</label>
+            <label className="text-sm font-medium text-gray-700 block mb-1">Endereço Residencial</label>
             <div className="relative">
-              <div className="absolute left-3 top-3 text-gray-400 z-10">
-                <MapPin size={18} />
-              </div>
-              <div className="[&>div>input]:pl-10">
-                <AddressAutocomplete
-                  value={formData.address}
-                  onChange={(val) => setFormData({ ...formData, address: val })}
-                  onSelect={(addr) => setFormData({ ...formData, address: addr })}
-                  placeholder="Seu endereço (será salvo como Casa)"
-                  userLocation={userLocation}
-                />
-              </div>
+              <AddressAutocomplete
+                value={formData.address}
+                onChange={(val) => setFormData({ ...formData, address: val })}
+                onSelect={(addr) => setFormData({ ...formData, address: addr })}
+                placeholder="Seu endereço (será salvo como Casa)"
+                userLocation={userLocation}
+                leftIcon={<MapPin size={18} />}
+              />
             </div>
           </div>
 
@@ -171,8 +174,8 @@ export const ProfileScreen = ({ user, isDriver, onBack, onSave, userLocation }: 
           )}
 
           <div className="pt-4">
-            <Button fullWidth onClick={handleSave} isLoading={loading}>
-              <Save size={20} /> Salvar Alterações
+            <Button fullWidth onClick={handleSave} isLoading={loading} disabled={isUploading}>
+              <Save size={20} /> {isUploading ? 'Enviando Foto...' : 'Salvar Alterações'}
             </Button>
           </div>
         </Card>

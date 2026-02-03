@@ -32,7 +32,7 @@ export const PaymentOptionsScreen: React.FC<PaymentOptionsScreenProps> = ({
     return (
         <div className="flex flex-col h-full bg-gray-50 animate-fade-in-right">
             {/* Header */}
-            <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm z-10">
+            <div className="bg-white px-4 py-4 pt-[calc(1rem+env(safe-area-inset-top))] flex items-center gap-3 shadow-sm z-10">
                 <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
                     <ArrowLeft size={24} className="text-gray-700" />
                 </button>

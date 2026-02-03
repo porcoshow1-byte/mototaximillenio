@@ -11,6 +11,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LineChart, Line, R
 import { Card, Button, Badge, Input, ConfirmationModal } from '../components/UI';
 import { ToastProvider, useToast } from '../components/Toast';
 import { fetchDashboardData, DashboardData, createOccurrence, deleteOccurrence, updateOccurrence } from '../services/admin';
+import { useGeoLocation } from '../hooks/useGeoLocation';
 
 import { updateUserProfile } from '../services/user';
 import { getAllCompanies, saveCompany, subscribeToCompanies } from '../services/company';
@@ -1017,6 +1018,7 @@ const AdminDashboardContent = ({ onLogout }: { onLogout?: () => void }) => {
   });
 
   const [activeTab, setActiveTab] = useState('dashboard');
+  const { location: adminLocation, loading: loadingLocation } = useGeoLocation();
   const [loading, setLoading] = useState(true);
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
 
@@ -3076,7 +3078,11 @@ const AdminDashboardContent = ({ onLogout }: { onLogout?: () => void }) => {
                   {showDriverPanel ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
                 </button>
 
-                <SimulatedMap drivers={safeData.drivers} />
+                <SimulatedMap
+                  drivers={safeData.drivers}
+                  isLoading={loadingLocation && !adminLocation}
+                  initialCenter={adminLocation || undefined}
+                />
               </div>
 
               {/* Driver List Panel - Collapsible */}

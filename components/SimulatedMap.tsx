@@ -38,6 +38,8 @@ interface MapProps {
   tripProfile?: { distance: string; duration: string };
   onEditOrigin?: () => void;
   onEditDestination?: () => void;
+  isLoading?: boolean;
+  initialCenter?: Coords;
 }
 
 const mapContainerStyle = {
@@ -46,9 +48,10 @@ const mapContainerStyle = {
 };
 
 // Ponto central padrão (Avaré - SP)
+// Ponto central padrão (Fallback se GPS falhar totalmente)
 const defaultCenter = {
-  lat: -23.1047,
-  lng: -48.9213,
+  lat: -23.5505, // SP Capital (better default than Avaré if needed)
+  lng: -46.6333,
 };
 
 // --- LEAFLET COMPONENT (FREE / OPTIMIZED) ---
@@ -65,8 +68,8 @@ const MapboxMapInner: React.FC<MapProps> = (props) => {
   const mapRef = useRef<MapRef>(null);
   const [routeGeoJSON, setRouteGeoJSON] = useState<any>(null);
   const [viewState, setViewState] = useState({
-    longitude: defaultCenter.lng,
-    latitude: defaultCenter.lat,
+    longitude: props.initialCenter?.lng || defaultCenter.lng,
+    latitude: props.initialCenter?.lat || defaultCenter.lat,
     zoom: 14
   });
 
@@ -409,7 +412,7 @@ const GOOGLE_MAP_STYLES = [
 
 // ... (LeafletMapInner remains the same)
 
-const GoogleMapInner: React.FC<MapProps> = ({ showDriver, showRoute, status, origin, destination, driverLocation, drivers, waypoints, recenterTrigger, onCameraChange, fitBoundsPadding }) => {
+const GoogleMapInner: React.FC<MapProps> = ({ showDriver, showRoute, status, origin, destination, driverLocation, drivers, waypoints, recenterTrigger, onCameraChange, fitBoundsPadding, initialCenter }) => {
   const [map, setMap] = useState<any | null>(null);
   const [directionsResponse, setDirectionsResponse] = useState<any | null>(null);
 
@@ -585,7 +588,7 @@ const GoogleMapInner: React.FC<MapProps> = ({ showDriver, showRoute, status, ori
   return (
     <GoogleMap
       mapContainerStyle={mapContainerStyle}
-      center={origin || defaultCenter}
+      center={origin || initialCenter || defaultCenter}
       zoom={14}
       onLoad={onLoad}
       onZoomChanged={() => {
@@ -708,6 +711,16 @@ export const SimulatedMap: React.FC<MapProps> = (props) => {
     preventGoogleFontsLoading: true,
     libraries: libraries
   });
+
+  // 0. Loading State (Prevents Avaré Jump)
+  if (props.isLoading) {
+    return (
+      <div className="w-full h-full bg-gray-100 flex flex-col items-center justify-center animate-pulse z-50">
+        <Loader2 className="w-10 h-10 text-orange-500 animate-spin mb-4" />
+        <p className="text-gray-500 font-medium text-sm">Localizando GPS...</p>
+      </div>
+    );
+  }
 
   // 1. Mapbox Visualization (Preferred by User)
   if (mapboxToken) {

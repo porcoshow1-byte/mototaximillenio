@@ -30,10 +30,10 @@ import { CouponsScreen } from './CouponsScreen';
 import { ReferralScreen } from './ReferralScreen';
 import { FavoriteDriversScreen } from './FavoriteDriversScreen';
 import { SERVICES, APP_CONFIG, MOCK_DRIVER } from '../constants';
-import { ServiceType, RideRequest, User, Coords, PaymentMethod, Company, WalletTransaction, Coupon } from '../types';
+import { ServiceType, RideRequest, User, Coords, PaymentMethod, Company, WalletTransaction, Coupon, SavedAddress } from '../types';
 import { createRideRequest, subscribeToRide, cancelRide, getRideHistory } from '../services/ride';
 import { createPixPayment, checkPayment } from '../services/mercadopago';
-import { getOrCreateUserProfile } from '../services/user';
+import { getOrCreateUserProfile, updateUserProfile } from '../services/user';
 import { getCompany } from '../services/company';
 import { calculateRoute, calculatePrice, reverseGeocode, searchAddress, getGoogleStaticMapUrl } from '../services/map';
 import { useAuth } from '../context/AuthContext';
@@ -387,7 +387,7 @@ export const UserApp = () => {
   const [tempPickedCoords, setTempPickedCoords] = useState<Coords | null>(null);
 
   // Refactored Persistent Favorites State
-  const [favorites, setFavorites] = useState<{ id: string, label: string, address: string, coords: Coords | null, type?: 'home' | 'work' | 'other' }[]>(() => {
+  const [favorites, setFavorites] = useState<SavedAddress[]>(() => {
     try {
       if (typeof window !== 'undefined') {
         const saved = localStorage.getItem('motoja_favorites');
@@ -402,7 +402,15 @@ export const UserApp = () => {
 
   useEffect(() => {
     localStorage.setItem('motoja_favorites', JSON.stringify(favorites));
-  }, [favorites]);
+
+    // Sync to Firestore if user is logged in (Debounced)
+    if (currentUser?.id) {
+      const timer = setTimeout(() => {
+        updateUserProfile(currentUser.id, { savedAddresses: favorites });
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [favorites, currentUser?.id]);
 
   // Favorites Modal State (for adding/editing)
   const [editingFavoriteId, setEditingFavoriteId] = useState<string | null>(null);
@@ -487,6 +495,12 @@ export const UserApp = () => {
       // Check for company
       if (profile && 'companyId' in profile && profile.companyId) {
         getCompany(profile.companyId).then(setUserCompany);
+      }
+
+      // Sync Favorites from Cloud
+      if ((profile as User).savedAddresses && (profile as User).savedAddresses!.length > 0) {
+        setFavorites((profile as User).savedAddresses!);
+        localStorage.setItem('motoja_favorites', JSON.stringify((profile as User).savedAddresses));
       }
     } catch (err: any) {
       console.error("Erro crítico ao carregar perfil:", err);
@@ -1211,13 +1225,14 @@ export const UserApp = () => {
             destinationAddress={routePoints[routePoints.length - 1]?.address || ''}
             tripProfile={routeInfo ? { distance: routeInfo.distance, duration: routeInfo.duration } : undefined}
             drivers={[]} // Keep clean
+            isLoading={loadingLocation && !originCoords}
           />
         </div>
 
         {step === 'searching' ? (
           <SearchingOverlayContent />
         ) : (
-          <div className="absolute bottom-0 left-0 right-0 z-20 bg-white rounded-t-3xl shadow-xl p-5 pb-8 max-h-[85vh] overflow-y-auto animate-slide-up">
+          <div className="absolute bottom-0 left-0 right-0 z-20 bg-white rounded-t-3xl shadow-xl p-5 pb-[calc(2rem+env(safe-area-inset-bottom))] max-h-[85vh] overflow-y-auto animate-slide-up">
             <div className="flex items-center gap-2 mb-4">
               <button onClick={() => { setStep('select_dest'); setRouteInfo(null); }} className="p-2 hover:bg-gray-100 rounded-full"><ArrowLeft size={20} /></button>
               <h3 className="font-bold text-lg">Confirmar {bookingMode === 'ride' ? 'Viagem' : 'Entrega'}</h3>
@@ -1576,7 +1591,7 @@ export const UserApp = () => {
         />
       </div>
 
-      <div className="absolute bottom-0 left-0 right-0 z-20 bg-white rounded-t-3xl shadow-2xl p-5 pb-8">
+      <div className="absolute bottom-0 left-0 right-0 z-20 bg-white rounded-t-3xl shadow-2xl p-5 pb-[calc(2rem+env(safe-area-inset-bottom))]">
         <div className="flex items-center justify-between mb-4">
           {currentRide?.securityCode ? (<div className="bg-orange-50 px-3 py-1.5 rounded-lg border border-orange-100 flex items-center gap-2 shadow-sm"><Lock size={16} className="text-orange-600" /><div className="flex flex-col"><span className="text-[10px] text-orange-800 font-bold leading-none">Código</span><span className="text-lg font-mono font-bold leading-none text-orange-900">{currentRide.securityCode}</span></div></div>) : <div></div>}
           <div className="flex gap-2">

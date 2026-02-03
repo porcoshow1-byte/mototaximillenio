@@ -7,10 +7,11 @@ interface Props {
   onChange: (value: string) => void;
   onSelect: (address: string, coords: { lat: number; lng: number }) => void;
   placeholder?: string;
-  userLocation?: { lat: number; lng: number } | null; // NEW: Location bias support
+  userLocation?: { lat: number; lng: number } | null;
+  leftIcon?: React.ReactNode;
 }
 
-export const AddressAutocomplete = ({ value, onChange, onSelect, placeholder, userLocation }: Props) => {
+export const AddressAutocomplete = ({ value, onChange, onSelect, placeholder, userLocation, leftIcon }: Props) => {
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -137,7 +138,7 @@ export const AddressAutocomplete = ({ value, onChange, onSelect, placeholder, us
           className="w-full p-3.5 pl-10 bg-gray-50 border border-transparent focus:bg-white focus:border-orange-500 rounded-xl outline-none transition-all font-medium text-gray-800 shadow-sm group-hover:bg-white group-hover:shadow-md placeholder:text-gray-400 text-sm"
         />
         <div className={`absolute left-3 top-1/2 -translate-y-1/2 transition-colors ${loading ? 'text-orange-500' : 'text-gray-400 group-focus-within:text-orange-500'}`}>
-          {loading ? <Loader2 className="animate-spin" size={18} /> : <Search size={18} />}
+          {loading ? <Loader2 className="animate-spin" size={18} /> : (leftIcon || <Search size={18} />)}
         </div>
       </div>
 

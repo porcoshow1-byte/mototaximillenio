@@ -79,7 +79,16 @@ export interface User {
   coupons?: Coupon[];
   referralCode?: string; // Indique e Ganhe
   favoriteDrivers?: string[]; // IDs of favorite drivers
+  savedAddresses?: SavedAddress[]; // Home, Work, etc.
   companyId?: string; // Added for Corporate Module
+}
+
+export interface SavedAddress {
+  id: string;
+  label: string;
+  address: string;
+  coords: Coords | null;
+  type?: 'home' | 'work' | 'other';
 }
 
 export interface Coupon {

@@ -453,7 +453,7 @@ export const DriverApp = () => {
   return (
     <div className={`h-full ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'} flex flex-col transition-colors duration-300`}>
       {/* Header */}
-      <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} p-3 flex justify-between items-center shadow-lg z-20 border-b transition-colors`}>
+      <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} p-3 pt-[calc(0.75rem+env(safe-area-inset-top))] flex justify-between items-center shadow-lg z-20 border-b transition-colors`}>
         <div className="flex items-center gap-2 p-1">
           <img
             src={currentDriver.avatar}
@@ -535,6 +535,7 @@ export const DriverApp = () => {
               origin={activeRide?.originCoords}
               destination={activeRide?.destinationCoords}
               showRoute={!!activeRide}
+              isLoading={!driverGpsLocation}
             />
 
             {/* Estado Procurando - Moderno */}
@@ -609,7 +610,7 @@ export const DriverApp = () => {
 
         {/* UI de Corrida em Andamento */}
         {activeRide && (
-          <div className="absolute bottom-0 left-0 right-0 z-30 bg-white text-gray-900 rounded-t-3xl p-5 shadow-2xl animate-slide-up">
+          <div className="absolute bottom-0 left-0 right-0 z-30 bg-white text-gray-900 rounded-t-3xl p-5 pb-[calc(2rem+env(safe-area-inset-bottom))] shadow-2xl animate-slide-up">
             {/* Info Passageiro */}
             <div className="flex items-center justify-between mb-4 pb-4 border-b border-gray-100">
               <div className="flex items-center gap-3">
