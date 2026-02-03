@@ -998,7 +998,7 @@ export const UserApp = () => {
           tripProfile={routeInfo ? { distance: routeInfo.distance, duration: routeInfo.duration } : undefined}
           onEditOrigin={() => setStep('select_dest')}
           onEditDestination={() => setStep('select_dest')}
-          isLoading={!originCoords && loadingLocation}
+          isLoading={!originCoords}
 
           recenterTrigger={recenterCount}
           onCameraChange={(coords, isUserInteraction) => {
@@ -1130,22 +1130,22 @@ export const UserApp = () => {
               </div>
 
               {/* Bottom Nav */}
-              <div className="flex justify-between items-center border-t border-gray-100 pt-1 mt-0">
+              <div className="flex justify-between items-center border-t border-gray-100 pt-3 pb-safe-4 mt-0 bg-white">
                 <div className="flex flex-col items-center gap-1 cursor-pointer text-orange-600">
-                  <div className="bg-orange-50 p-2 rounded-full px-5">
+                  <div className="bg-orange-50 p-2 rounded-full px-5 mb-1">
                     <Home size={24} fill="currentColor" />
                   </div>
                   <span className="text-xs font-bold">Início</span>
                 </div>
 
-                <div onClick={() => setStep('history')} className="flex flex-col items-center gap-1 cursor-pointer text-gray-400 hover:text-gray-600 transition">
+                <div onClick={() => setStep('history')} className="flex flex-col items-center gap-1 cursor-pointer text-gray-400 hover:text-gray-600 transition mb-1">
                   <div className="p-2">
                     <History size={24} />
                   </div>
                   <span className="text-xs font-medium">Atividade</span>
                 </div>
 
-                <button onClick={() => setStep('account')} className={`flex flex-col items-center gap-1 ${step === 'account' ? 'text-orange-600 font-bold' : 'text-gray-400'}`}>
+                <button onClick={() => setStep('account')} className={`flex flex-col items-center gap-1 mb-1 ${step === 'account' ? 'text-orange-600 font-bold' : 'text-gray-400'}`}>
                   <div className="p-2">
                     <UserCircle size={24} />
                   </div>
@@ -1784,7 +1784,8 @@ export const UserApp = () => {
   const RenderSelectDest = () => (
     <div className="h-full bg-white flex flex-col font-sans">
       {/* Header */}
-      <div className="p-4 pt-safe-12 flex items-center gap-4 bg-white sticky top-0 z-10 shadow-sm">
+      {/* Header */}
+      <div className="p-4 pt-safe-24 flex items-center gap-4 bg-white sticky top-0 z-10 shadow-sm border-b border-gray-50">
         <button onClick={() => setStep('home')} className="p-2 hover:bg-gray-100 rounded-full transition-colors -ml-2">
           <ArrowLeft size={24} className="text-gray-700" />
         </button>
