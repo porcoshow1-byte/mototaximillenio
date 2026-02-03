@@ -960,14 +960,14 @@ export const UserApp = () => {
       {step !== 'map_picker' && (
         <>
           {/* Top Left: Brand Pill */}
-          <div className="absolute top-12 left-6 z-20 animate-fade-in-down">
+          <div className="absolute left-6 z-20 animate-fade-in-down" style={{ top: 'calc(1.5rem + env(safe-area-inset-top))' }}>
             <div className="bg-orange-500 text-white px-6 py-2 rounded-full shadow-lg shadow-orange-500/30 flex items-center gap-2">
               <span className="font-bold text-lg">MotoJá</span>
             </div>
           </div>
 
           {/* Top Right: Action Buttons */}
-          <div className="absolute top-12 right-6 z-20 flex gap-3 animate-fade-in-down">
+          <div className="absolute right-6 z-20 flex gap-3 animate-fade-in-down" style={{ top: 'calc(1.5rem + env(safe-area-inset-top))' }}>
             <button className="w-12 h-12 bg-white rounded-full shadow-lg flex items-center justify-center text-gray-700 active:scale-90 transition-transform">
               <Ticket size={20} />
             </button>
@@ -999,6 +999,7 @@ export const UserApp = () => {
           onEditOrigin={() => setStep('select_dest')}
           onEditDestination={() => setStep('select_dest')}
           isLoading={!originCoords}
+          initialCenter={originCoords || undefined}
 
           recenterTrigger={recenterCount}
           onCameraChange={(coords, isUserInteraction) => {
@@ -1922,7 +1923,7 @@ export const UserApp = () => {
       return (
         <div className="h-full bg-gray-50 flex flex-col animate-fade-in font-sans">
           {/* Header Detalhes */}
-          <div className="bg-white p-4 shadow-sm sticky top-0 z-10 flex items-center gap-3 border-b border-gray-100">
+          <div className="bg-white p-4 pt-safe-12 shadow-sm sticky top-0 z-10 flex items-center gap-3 border-b border-gray-100">
             <button
               onClick={() => setSelectedHistoryRide(null)}
               className="p-2 -ml-2 hover:bg-gray-100 rounded-full transition-colors"
@@ -2083,7 +2084,7 @@ export const UserApp = () => {
     // LIST VIEW
     return (
       <div className="h-full bg-gray-50 flex flex-col animate-fade-in">
-        <div className="bg-white p-4 shadow-sm sticky top-0 z-10 flex items-center gap-3">
+        <div className="bg-white p-4 pt-safe-12 shadow-sm sticky top-0 z-10 flex items-center gap-3">
           <button onClick={() => setStep('home')} className="p-2 -ml-2 hover:bg-gray-100 rounded-full transition-colors">
             <ArrowLeft size={24} className="text-gray-700" />
           </button>

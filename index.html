@@ -171,16 +171,29 @@
       padding-bottom: env(safe-area-inset-bottom);
     }
 
-    .pt-safe-12 {
-      padding-top: calc(3rem + env(safe-area-inset-top));
+    /* pt-safe-4: Safe area + 1rem (16px) extra */
+    .pt-safe-4 {
+      padding-top: calc(1rem + env(safe-area-inset-top));
     }
 
+    /* pb-safe-4: Safe area + 1rem (16px) extra */
     .pb-safe-4 {
       padding-bottom: calc(1rem + env(safe-area-inset-bottom));
     }
 
+    /* pt-safe-8: Safe area + 2rem (32px) extra - for larger headers */
+    .pt-safe-8 {
+      padding-top: calc(2rem + env(safe-area-inset-top));
+    }
+
+    /* pt-safe-12: Safe area + 0.5rem (8px) extra - minimal, for screen headers */
+    .pt-safe-12 {
+      padding-top: calc(0.5rem + env(safe-area-inset-top));
+    }
+
+    /* pt-safe-24: Same as pt-safe-12 for screen headers */
     .pt-safe-24 {
-      padding-top: calc(6rem + env(safe-area-inset-top));
+      padding-top: calc(0.5rem + env(safe-area-inset-top));
     }
   </style>
   <link rel="manifest" href="/manifest.json">

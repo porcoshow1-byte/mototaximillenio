@@ -626,9 +626,12 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
             </div>
           ) : (
             <div className="text-center lg:text-left mb-8">
-              <button onClick={onBack} className="lg:hidden mb-6 text-gray-500 hover:text-gray-900 flex items-center gap-2 text-sm font-medium">
-                &larr; Voltar
-              </button>
+              {/* Back button only visible for admin/company roles */}
+              {(role === 'admin' || role === 'company') && (
+                <button onClick={onBack} className="lg:hidden mb-6 text-gray-500 hover:text-gray-900 flex items-center gap-2 text-sm font-medium">
+                  &larr; Voltar
+                </button>
+              )}
 
               <h2 className="text-3xl font-bold text-gray-900 mb-2">
                 {isLogin ? 'Bem-vindo de volta' : 'Crie sua conta'}
