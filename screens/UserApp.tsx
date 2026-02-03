@@ -1097,7 +1097,7 @@ export const UserApp = () => {
               <div className={`w-12 h-1.5 bg-gray-200 rounded-full transition-colors ${!showRecent ? 'bg-orange-200' : ''}`}></div>
             </div>
 
-            <div className="px-6 pb-2 pt-2">
+            <div className="px-6 pb-0 pt-2">
               <h2 className="text-xl font-bold text-gray-800 mb-6 text-center select-none">
                 Boa tarde, {currentUser?.name?.split(' ')[0] || 'Passageiro'}
               </h2>
@@ -1783,7 +1783,7 @@ export const UserApp = () => {
   const RenderSelectDest = () => (
     <div className="h-full bg-white flex flex-col font-sans">
       {/* Header */}
-      <div className="p-4 flex items-center gap-4">
+      <div className="p-4 pt-safe-12 flex items-center gap-4 bg-white sticky top-0 z-10 shadow-sm">
         <button onClick={() => setStep('home')} className="p-2 hover:bg-gray-100 rounded-full transition-colors -ml-2">
           <ArrowLeft size={24} className="text-gray-700" />
         </button>
