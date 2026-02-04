@@ -504,7 +504,15 @@ export const UserApp = () => {
       }
     } catch (err: any) {
       console.error("Erro crítico ao carregar perfil:", err);
-      // Fallback robusto para evitar tela branca
+      // Correction: If user is not found, it might be deleted. Logout instead of mock fallback.
+      if (err.message && err.message.includes('não encontrado')) {
+        alert('Sua conta não foi encontrada ou foi excluída.');
+        const { logout } = await import('../services/auth');
+        logout();
+        return;
+      }
+
+      // Fallback robusto para evitar tela branca (only for network errors)
       const mockUser = {
         id: authUser.uid,
         name: authUser.email?.split('@')[0] || 'Usuario Demo',
@@ -748,7 +756,16 @@ export const UserApp = () => {
 
     setIsBooking(true);
     try {
-      const price = calculatePrice(selectedService, routeInfo.distanceVal);
+      let price = calculatePrice(selectedService, routeInfo.distanceVal);
+
+      // Add debt (negative balance) to the current price if applicable
+      if (currentUser.walletBalance && currentUser.walletBalance < 0) {
+        const debt = Math.abs(currentUser.walletBalance);
+        price += debt;
+        // Alert the user about the debt
+        // We might want to show this in the UI properly, but adding to price ensures it's passed to the ride
+      }
+
       const originP = routePoints[0];
       const destP = routePoints[routePoints.length - 1];
 
@@ -797,6 +814,7 @@ export const UserApp = () => {
   const handlePay = async () => {
     if (!currentRide) return;
 
+    // 1. Corporate / Faturado
     if (currentRide.paymentMethod === 'corporate') {
       alert('Esta corrida será faturada para sua empresa.');
       return;
@@ -804,6 +822,80 @@ export const UserApp = () => {
 
     setIsPaying(true);
 
+    // 2. Wallet Payment (Allows Negative Balance)
+    if (currentRide.paymentMethod === 'wallet') {
+      try {
+        const price = currentRide.price || 0;
+        const currentBalance = currentUser?.walletBalance || 0;
+        const newBalance = currentBalance - price;
+
+        // Visual Feedback
+        if (newBalance < 0) {
+          alert(`Seu saldo ficará negativo (R$ ${newBalance.toFixed(2)}) e o valor será cobrado na próxima corrida.`);
+        }
+
+        // Update User Profile
+        if (currentUser) {
+          const updatedUser = { ...currentUser, walletBalance: newBalance };
+          setCurrentUser(updatedUser);
+
+          // Persist
+          localStorage.setItem(`motoja_user_${currentUser.id}`, JSON.stringify(updatedUser));
+          const { updateUserProfile } = await import('../services/user');
+          updateUserProfile(currentUser.id, { walletBalance: newBalance });
+        }
+
+        // Mark Ride as Paid/Completed
+        // Note: Realistically, we should call a backend function 'completeRidePayment'
+        setPaymentFeedback({ type: 'success', message: 'Pagamento via Carteira realizado com sucesso!' });
+
+        // Update Local State to reflect completion
+        setCurrentRide(prev => prev ? ({ ...prev, paymentStatus: 'completed', status: 'completed' }) : null);
+
+        // Sync with Firestore (simulate driver completing)
+        // In a real app, we update the 'rides' collection
+        const { updateDoc, doc } = await import('firebase/firestore');
+        const { db } = await import('../services/firebase');
+        if (db) {
+          await updateDoc(doc(db, 'rides', currentRide.id), {
+            paymentStatus: 'completed',
+            status: 'completed',
+            paidAt: Date.now()
+          });
+        }
+
+      } catch (err) {
+        console.error("Erro pagamento carteira:", err);
+        setPaymentFeedback({ type: 'error', message: 'Erro ao processar pagamento de carteira.' });
+      } finally {
+        setIsPaying(false);
+      }
+      return;
+    }
+
+    // 3. Cash / Machine (Self-Confirmation or Driver Confirmation)
+    if (currentRide.paymentMethod === 'cash' || currentRide.paymentMethod === 'credit_machine' || currentRide.paymentMethod === 'debit_machine') {
+      // Usually driver confirms, but for "Stuck" user, allow self-confirmation
+      if (confirm("Confirmar que realizou o pagamento ao motorista?")) {
+        setPaymentFeedback({ type: 'success', message: 'Pagamento confirmado!' });
+        setCurrentRide(prev => prev ? ({ ...prev, paymentStatus: 'completed', status: 'completed' }) : null);
+        // Sync with Firestore
+        try {
+          const { updateDoc, doc } = await import('firebase/firestore');
+          const { db } = await import('../services/firebase');
+          if (db) {
+            await updateDoc(doc(db, 'rides', currentRide.id), {
+              paymentStatus: 'completed',
+              status: 'completed'
+            });
+          }
+        } catch (e) { }
+      }
+      setIsPaying(false);
+      return;
+    }
+
+    // 4. PIX (Default fallback)
     try {
       const payment = await createPixPayment(
         currentRide.id,
@@ -1657,6 +1749,24 @@ export const UserApp = () => {
 
         <Button fullWidth onClick={handlePay} disabled={isPaying || currentRide?.paymentStatus === 'completed'} className={`mb-2 ${currentRide?.paymentStatus === 'completed' ? 'bg-green-500 hover:bg-green-600' : ''}`}>{currentRide?.paymentStatus === 'completed' ? <><CheckCircle size={20} /> Pagamento Realizado</> : "Pagar Agora"}</Button>
         <div className="grid grid-cols-2 gap-3"><Button variant="secondary" onClick={() => setShowChat(true)}><MessageSquare size={18} /> Chat</Button><Button variant="secondary"><Phone size={18} /> Ligar</Button></div>
+
+        {/* Emergency Exit for Stuck Rides */}
+        <div className="mt-4 pt-4 border-t border-gray-100 text-center">
+          <button
+            onClick={() => {
+              if (confirm("Deseja sair desta tela? Se a corrida já foi finalizada, isso retornará ao início.")) {
+                setStep('home');
+                // Also clear current ride local state to be safe
+                setCurrentRide(null);
+                setCurrentRideId(null);
+                setRideStatus('');
+              }
+            }}
+            className="text-gray-400 text-xs font-bold hover:text-gray-600 underline"
+          >
+            Problemas? Voltar ao Início
+          </button>
+        </div>
       </div>
     </>
   );

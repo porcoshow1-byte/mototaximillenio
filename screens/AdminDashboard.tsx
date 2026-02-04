@@ -225,6 +225,33 @@ const DriverDetailModal = ({ driver, onClose }: { driver: Driver, onClose: () =>
                   Reconsiderar e Aprovar
                 </Button>
               )}
+
+              <div className="pt-2 mt-2 border-t border-gray-100">
+                <Button
+                  fullWidth
+                  variant="danger"
+                  className="bg-red-50 text-red-600 border border-red-200 hover:bg-red-100"
+                  onClick={() => {
+                    setConfirmModal({
+                      isOpen: true,
+                      title: 'Excluir Motorista de Vez',
+                      message: 'ATENÇÃO: Isso excluirá permanentemente o cadastro do motorista do banco de dados. Para apenas suspender, use o Bloqueio.',
+                      variant: 'danger',
+                      onConfirm: async () => {
+                        try {
+                          const { deleteUser } = await import('../services/user');
+                          await deleteUser(driver.id);
+                          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                          onClose();
+                          window.location.reload();
+                        } catch (e) { alert('Erro ao excluir'); }
+                      }
+                    });
+                  }}
+                >
+                  <Trash2 size={18} className="mr-2" /> Excluir Cadastro (Permanente)
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -374,12 +401,18 @@ const UserDetailModal = ({ user, onClose, rides }: { user: User; onClose: () => 
                     setConfirmModal({
                       isOpen: true,
                       title: 'Excluir Passageiro',
-                      message: 'Tem certeza que deseja EXCLUIR este passageiro? Esta ação não pode ser desfeita.',
+                      message: 'Tem certeza que deseja EXCLUIR este passageiro? Esta ação apagará permanentemente os dados.',
                       variant: 'danger',
-                      onConfirm: () => {
-                        alert('Passageiro excluído (simulação)');
-                        setConfirmModal(prev => ({ ...prev, isOpen: false }));
-                        onClose();
+                      onConfirm: async () => {
+                        try {
+                          const { deleteUser } = await import('../services/user');
+                          await deleteUser(user.id);
+                          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                          onClose();
+                          window.location.reload(); // Refresh table
+                        } catch (e) {
+                          alert('Erro ao excluir usuário');
+                        }
                       }
                     });
                   }}
