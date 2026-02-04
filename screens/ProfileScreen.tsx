@@ -33,10 +33,18 @@ export const ProfileScreen = ({ user, isDriver, onBack, onSave, userLocation }: 
     if (file) {
       try {
         setIsUploading(true);
+
+        // Import compression utility
+        const { compressImage } = await import('../services/storage');
+
+        // Compress image first (max 800px, quality 0.7)
+        const compressedFile = await compressImage(file, 800, 0.7);
+        console.log(`Original: ${(file.size / 1024).toFixed(1)}KB, Compressed: ${(compressedFile.size / 1024).toFixed(1)}KB`);
+
         // Use a timeout race to prevent infinite hanging
-        const uploadPromise = uploadFile(file, `avatars/${user.id}_${Date.now()}`);
+        const uploadPromise = uploadFile(compressedFile, `avatars/${user.id}_${Date.now()}`);
         const timeoutPromise = new Promise<string>((_, reject) =>
-          setTimeout(() => reject(new Error("Timeout")), 15000)
+          setTimeout(() => reject(new Error("Timeout")), 20000)
         );
 
         const url = await Promise.race([uploadPromise, timeoutPromise]);
@@ -44,11 +52,23 @@ export const ProfileScreen = ({ user, isDriver, onBack, onSave, userLocation }: 
       } catch (error) {
         console.error("Profile image upload error:", error);
         // Fallback: Use base64 locally if Firebase fails or timeouts
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setFormData(prev => ({ ...prev, avatar: reader.result as string }));
-        };
-        reader.readAsDataURL(file);
+        // Also compress for base64 fallback
+        try {
+          const { compressImage } = await import('../services/storage');
+          const compressedFile = await compressImage(file, 400, 0.6); // Smaller for base64
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            setFormData(prev => ({ ...prev, avatar: reader.result as string }));
+          };
+          reader.readAsDataURL(compressedFile);
+        } catch {
+          // Last resort: use original file
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            setFormData(prev => ({ ...prev, avatar: reader.result as string }));
+          };
+          reader.readAsDataURL(file);
+        }
       } finally {
         setIsUploading(false);
       }
