@@ -131,6 +131,7 @@ export interface Driver {
 export interface RideRequest {
   id: string;
   origin: string;
+  pickupReference?: string; // Point of reference for driver
   destination: string;
   originCoords?: Coords;
   destinationCoords?: Coords;

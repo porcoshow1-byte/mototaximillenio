@@ -315,12 +315,92 @@ export const DriverApp = () => {
     }
   };
 
-  const handleFinishRide = async () => {
-    if (activeRide) {
+  // Payment & Rating State
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showRatingModal, setShowRatingModal] = useState(false);
+  const [paymentProblem, setPaymentProblem] = useState<'none' | 'partial' | 'unpaid'>('none');
+  const [partialAmount, setPartialAmount] = useState('');
+  const [ratingScore, setRatingScore] = useState(5);
+  const [ratingComment, setRatingComment] = useState('');
+
+  const handleFinishRide = () => {
+    // Instead of finishing immediately, open payment confirmation
+    setShowPaymentModal(true);
+    setPaymentProblem('none');
+    setPartialAmount('');
+  };
+
+  const confirmFinishRide = async () => {
+    if (!activeRide) return;
+    setProcessingId('finishing');
+
+    try {
+      // 1. Handle Debt Logic if problem reported
+      if (paymentProblem === 'partial' || paymentProblem === 'unpaid') {
+        const fullPrice = activeRide.price || 0;
+        let debt = 0;
+
+        if (paymentProblem === 'unpaid') {
+          debt = fullPrice;
+        } else {
+          // Partial
+          const paid = parseFloat(partialAmount.replace(',', '.')) || 0;
+          debt = fullPrice - paid;
+          if (debt < 0) debt = 0; // Should not happen
+        }
+
+        if (debt > 0) {
+          // Update User Profile with Debt
+          // Fetch user profile again to be safe? Or just increment debt. 
+          // Best to import getDoc from firebase but we have getUserProfile helper
+
+          // We need to update the passenger's wallet balance
+          // Since we don't have the passenger's full profile loaded here continuously, 
+          // we should transactionally update it. 
+          // For now, we'll use a direct update assuming we valid passenger ID
+
+          // Note: In a real backend this should be a cloud function transaction.
+          // Here we will simulate it by reading and writing.
+          const { doc, getDoc, updateDoc } = await import('firebase/firestore');
+          const userRef = doc(db, 'users', activeRide.passenger.id);
+          const userSnap = await getDoc(userRef);
+
+          if (userSnap.exists()) {
+            const currentBalance = userSnap.data().walletBalance || 0;
+            await updateDoc(userRef, {
+              walletBalance: currentBalance - debt
+            });
+            console.log(`Debt of ${debt} applied to user ${activeRide.passenger.id}`);
+          }
+        }
+      }
+
+      // 2. Complete the ride
       await completeRide(activeRide.id);
+
+      // 3. Play Sound & Reset
       playSound('rideCompleted');
-      setActiveRide(null);
+      setShowPaymentModal(false);
+
+      // 4. Show Rating Modal
+      setShowRatingModal(true);
+
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao finalizar corrida. Tente novamente.");
+    } finally {
+      setProcessingId(null);
     }
+  };
+
+  const submitPassengerRating = async () => {
+    if (!activeRide) return;
+    // Just mock the submission or save to firestore if needed
+    // In a real app we would save to a 'ratings' collection
+
+    // Close everything
+    setShowRatingModal(false);
+    setActiveRide(null); // Finally clear the ride
   };
 
   const handleLogout = async () => {
@@ -583,6 +663,9 @@ export const DriverApp = () => {
                   <div>
                     <p className="text-xs text-gray-400">Origem</p>
                     <p className="font-semibold text-white">{currentRequest.origin}</p>
+                    {currentRequest.pickupReference && (
+                      <p className="text-xs text-yellow-500 font-bold mt-0.5"><span className="text-gray-500 font-normal">Ref:</span> {currentRequest.pickupReference}</p>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -622,6 +705,11 @@ export const DriverApp = () => {
                   <span className="text-sm text-gray-500 flex items-center gap-1">
                     <Navigation size={12} /> {activeRide.status === 'in_progress' ? 'Em direção ao destino' : 'Buscando passageiro'}
                   </span>
+                  {activeRide.pickupReference && activeRide.status !== 'in_progress' && (
+                    <div className="bg-yellow-50 text-yellow-800 text-xs px-2 py-1 rounded mt-1 border border-yellow-200 inline-block font-bold">
+                      Ref: {activeRide.pickupReference}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -970,7 +1058,122 @@ export const DriverApp = () => {
         )
       }
 
+      {/* Payment Confirmation Modal */}
+      {showPaymentModal && activeRide && (
+        <div className="absolute inset-0 z-[70] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className={`w-full max-w-sm ${darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'} rounded-2xl shadow-2xl overflow-hidden animate-slide-up p-6`}>
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <DollarSign size={32} className="text-green-600" />
+              </div>
+              <h2 className="text-xl font-bold mb-1">Pagamento da Corrida</h2>
+              <p className="text-3xl font-bold text-green-500 mb-2">R$ {activeRide.price.toFixed(2)}</p>
+              <p className="text-sm text-gray-400">
+                Método: {activeRide.paymentMethod === 'cash' ? 'Dinheiro' : activeRide.paymentMethod === 'pix' ? 'Pix' : activeRide.paymentMethod === 'wallet' ? 'Carteira' : 'Cartão'}
+              </p>
+            </div>
+
+            {/* Payment Problem Selector */}
+            {activeRide.paymentMethod === 'cash' ? (
+              /* Cash Logic: Confirm receipt or report problem */
+              <div className="mb-6">
+                <p className="font-bold mb-3 text-sm">O passageiro pagou o valor total?</p>
+
+                <div className="space-y-3">
+                  <label className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition ${paymentProblem === 'none' ? 'border-green-500 bg-green-500/10' : 'border-gray-200 hover:bg-gray-50'}`}>
+                    <input type="radio" name="payProb" checked={paymentProblem === 'none'} onChange={() => setPaymentProblem('none')} className="w-4 h-4 text-green-600" />
+                    <span className="font-medium">Sim, recebi R$ {activeRide.price.toFixed(2)}</span>
+                  </label>
+
+                  <label className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition ${paymentProblem === 'partial' ? 'border-orange-500 bg-orange-500/10' : 'border-gray-200 hover:bg-gray-50'}`}>
+                    <input type="radio" name="payProb" checked={paymentProblem === 'partial'} onChange={() => setPaymentProblem('partial')} className="w-4 h-4 text-orange-600" />
+                    <span className="font-medium">Pagamento Parcial</span>
+                  </label>
+
+                  {paymentProblem === 'partial' && (
+                    <div className="pl-8 animate-fade-in">
+                      <p className="text-xs text-gray-400 mb-1">Quanto você recebeu?</p>
+                      <Input
+                        placeholder="0,00"
+                        value={partialAmount}
+                        onChange={(e) => setPartialAmount(e.target.value)}
+                        className="text-lg font-bold"
+                        type="number"
+                      />
+                      <p className="text-xs text-red-400 mt-1">O passageiro ficará devendo R$ {(activeRide.price - (parseFloat(partialAmount.replace(',', '.')) || 0)).toFixed(2)}</p>
+                    </div>
+                  )}
+
+                  <label className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition ${paymentProblem === 'unpaid' ? 'border-red-500 bg-red-500/10' : 'border-gray-200 hover:bg-gray-50'}`}>
+                    <input type="radio" name="payProb" checked={paymentProblem === 'unpaid'} onChange={() => setPaymentProblem('unpaid')} className="w-4 h-4 text-red-600" />
+                    <span className="font-medium">Não Pagou (Calote)</span>
+                  </label>
+                  {paymentProblem === 'unpaid' && (
+                    <p className="text-xs text-red-400 pl-8">O valor total será cobrado na próxima corrida.</p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              /* Digital Payment Logic: Usually Auto-Confirmed */
+              <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl text-center mb-6">
+                <CheckCircle size={24} className="text-blue-500 mx-auto mb-2" />
+                <p className="text-blue-800 font-bold text-sm">Pagamento Digital Confirmado</p>
+                <p className="text-blue-600 text-xs mt-1">O valor já foi debitado/autorizado no app do passageiro.</p>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={() => setShowPaymentModal(false)} className="flex-1">Voltar</Button>
+              <Button
+                variant="success"
+                onClick={confirmFinishRide}
+                className="flex-[2]"
+                isLoading={processingId === 'finishing'}
+              >
+                {paymentProblem === 'none' ? 'Confirmar Recebimento' : 'Reportar e Finalizar'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Driver Rating Passenger Modal */}
+      {showRatingModal && activeRide && (
+        <div className="absolute inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className={`w-full max-w-sm ${darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'} rounded-2xl shadow-2xl p-6 text-center animate-bounce-in`}>
+            <h2 className="text-xl font-bold mb-1">Avalie o Passageiro</h2>
+            <p className="text-sm text-gray-400 mb-6">Como foi sua experiência com {activeRide.passenger.name}?</p>
+
+            <div className="flex justify-center gap-2 mb-8">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                  key={star}
+                  onClick={() => setRatingScore(star)}
+                  className="transition hover:scale-110 active:scale-90"
+                >
+                  <Star size={32} className={`${ratingScore >= star ? 'text-yellow-400 fill-yellow-400' : 'text-gray-600'}`} />
+                </button>
+              ))}
+            </div>
+
+            <Input
+              placeholder="Deixe um elogio ou observação (opcional)..."
+              value={ratingComment}
+              onChange={(e) => setRatingComment(e.target.value)}
+              className="mb-6"
+            />
+
+            <Button fullWidth onClick={submitPassengerRating} className="bg-orange-500 hover:bg-orange-600 text-white">
+              Enviar Avaliação
+            </Button>
+            <button onClick={submitPassengerRating} className="mt-4 text-xs text-gray-500 hover:underline">
+              Pular Avaliação
+            </button>
+          </div>
+        </div>
+      )}
     </div >
   );
 };
 // End of component
+```

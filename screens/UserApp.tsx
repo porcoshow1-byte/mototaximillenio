@@ -248,6 +248,7 @@ export const UserApp = () => {
   const [currentRideId, setCurrentRideId] = useState<string | null>(null);
   const [currentRide, setCurrentRide] = useState<RideRequest | null>(null);
   const [isFavoriteDriver, setIsFavoriteDriver] = useState(false); // Favorite Driver Toggle
+  const [showRatingModal, setShowRatingModal] = useState(false); // Rating Modal
   const [historyRides, setHistoryRides] = useState<RideRequest[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
@@ -279,7 +280,9 @@ export const UserApp = () => {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
-  const [rating, setRating] = useState(0);
+  const [rating, setRating] = useState(0); // Deprecated generic rating
+  const [driverRating, setDriverRating] = useState(5);
+  const [driverRatingComment, setDriverRatingComment] = useState('');
   const [recenterCount, setRecenterCount] = useState(0);
   const [mapMoved, setMapMoved] = useState(false);
 
@@ -370,6 +373,25 @@ export const UserApp = () => {
       }
     }
   }, [currentRide?.status, currentRide?.driver?.name]);
+
+  // Trigger Rating Modal when ride is completed
+  useEffect(() => {
+    if (currentRide?.status === 'completed' && currentRide?.driver) {
+      setShowRatingModal(true);
+    }
+  }, [currentRide?.status]);
+
+  const submitDriverRating = async () => {
+    // In a real app, save to Firestore
+    console.log('Rating submitted:', driverRating, 'Favorite:', isFavoriteDriver);
+    setShowRatingModal(false);
+    setStep('home');
+    setCurrentRide(null);
+    setCurrentRideId(null);
+    setRideStatus('');
+    setDriverRating(5);
+    setIsFavoriteDriver(false);
+  };
   // --- NOTIFICATIONS END ---
 
   // UI Toggles
@@ -1254,50 +1276,53 @@ export const UserApp = () => {
 
   /* Otimização: Overlay de busca reaproveitável dentro do RenderConfirm para não remontar o mapa */
   const SearchingOverlayContent = () => (
-    <div className="absolute inset-0 z-50 flex flex-col items-center justify-center animate-fade-in text-center overflow-hidden">
+    <div className="absolute inset-0 z-50 flex flex-col justify-end animate-fade-in overflow-hidden pointer-events-none">
 
-      {/* Overlay Gradient for better text readability */}
-      <div className="absolute inset-0 bg-gradient-to-b from-white/90 via-white/80 to-white/90 backdrop-blur-sm -z-10"></div>
+      {/* Top Gradient Fade to allow map visibility */}
+      <div className="absolute top-0 left-0 right-0 h-1/3 bg-gradient-to-b from-white/0 to-transparent pointer-events-none"></div>
 
-      <div className="relative z-10 w-full max-w-md px-6 flex flex-col items-center">
-        {/* Radar Animation */}
-        <div className="relative mb-12">
-          <div className="absolute inset-0 bg-orange-500 rounded-full animate-ping opacity-20 duration-1000"></div>
-          <div className="absolute inset-0 bg-orange-500 rounded-full animate-ping opacity-15 duration-2000 delay-300"></div>
-          <div className="absolute inset-0 bg-orange-400 rounded-full animate-ping opacity-10 duration-3000 delay-700"></div>
-          <div className="relative z-10 bg-gradient-to-br from-orange-400 to-orange-600 p-6 rounded-full shadow-2xl shadow-orange-500/40 border-4 border-white">
-            <Bike size={48} className="text-white" />
+      {/* Main Content Area - Slide Up */}
+      <div className="relative z-10 w-full bg-white rounded-t-[35px] shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] pb-[calc(2rem+env(safe-area-inset-bottom))] pt-12 flex flex-col items-center pointer-events-auto animate-slide-up-slow">
+
+        {/* Pulse Icon - Floating slightly above or at top */}
+        <div className="absolute -top-10 left-1/2 -translate-x-1/2">
+          <div className="relative flex items-center justify-center">
+            {/* Ripple Effects */}
+            <div className="absolute w-64 h-64 bg-orange-500/10 rounded-full animate-ping-slow"></div>
+            <div className="absolute w-48 h-48 bg-orange-500/20 rounded-full animate-ping-slower delay-75"></div>
+
+            {/* Main Circle */}
+            <div className="relative z-10 w-24 h-24 bg-gradient-to-tr from-orange-500 to-orange-400 rounded-full flex items-center justify-center shadow-xl shadow-orange-500/30 border-[4px] border-white">
+              <Bike size={40} className="text-white drop-shadow-md" />
+            </div>
           </div>
         </div>
 
-        <h3 className="text-2xl font-bold text-gray-800 mb-2">Localizando Piloto</h3>
-        <p className="text-gray-500 mb-8 max-w-xs leading-relaxed font-medium">
+        <h3 className="text-2xl font-bold text-gray-800 mb-2 mt-8">Localizando Piloto</h3>
+        <p className="text-gray-500 mb-8 max-w-xs text-center leading-relaxed font-medium px-6 text-sm">
           Estamos conectando você ao parceiro mais próximo. Isso leva poucos segundos.
         </p>
 
-        {/* Card do Código de Segurança */}
+        {/* Security Code Card (if exists) */}
         {currentRide?.securityCode && (
-          <div className="bg-white/80 backdrop-blur-md px-6 py-4 rounded-2xl mb-8 border border-white/50 shadow-lg w-full max-w-xs relative overflow-hidden group">
-            <div className="absolute top-0 left-0 w-1 h-full bg-orange-500"></div>
-            <p className="text-[10px] text-gray-400 uppercase font-bold mb-2 flex items-center justify-center gap-1 group-hover:text-orange-500 transition-colors">
-              <ShieldCheck size={12} className="text-green-500" /> Código de Segurança
-            </p>
-            <p className="text-4xl font-mono font-bold tracking-[0.2em] text-gray-800 mb-1">
-              {currentRide.securityCode}
-            </p>
-            <p className="text-[10px] text-gray-400 font-medium border-t border-gray-100 pt-2 mt-2">
-              {bookingMode === 'delivery' ? "Informe ao entregar" : "Informe ao embarcar"}
-            </p>
+          <div className="bg-gray-50 px-6 py-3 rounded-2xl mb-8 border border-gray-100 flex items-center justify-between gap-4 w-64">
+            <div className="flex items-center gap-2">
+              <ShieldCheck size={18} className="text-green-600" />
+              <span className="text-xs font-bold text-gray-500 uppercase">Código</span>
+            </div>
+            <span className="text-2xl font-mono font-bold text-gray-800 tracking-widest">{currentRide.securityCode}</span>
           </div>
         )}
 
-        <Button
-          variant="outline"
-          onClick={() => setShowCancelConfirm(true)}
-          className="px-8 py-3 rounded-full border-gray-300 bg-white/50 text-gray-600 font-semibold hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition-all shadow-sm"
-        >
-          Cancelar Busca
-        </Button>
+        <div className="w-full px-8">
+          <Button
+            variant="outline"
+            onClick={() => setShowCancelConfirm(true)}
+            className="w-full py-4 rounded-xl border-gray-200 bg-white text-gray-700 font-bold hover:bg-gray-50 hover:border-gray-300 hover:text-red-500 transition-all shadow-sm text-base"
+          >
+            Cancelar Busca
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -1675,101 +1700,147 @@ export const UserApp = () => {
 
 
 
-  const RenderRide = () => (
-    <>
-      {showPixModal && <RenderPixModal />}
-      {/* Map Layer */}
-      <div className="absolute inset-0 z-0">
-        <SimulatedMap
-          showDriver={!!currentRide && step === 'ride'}
-          showRoute={!!routeInfo && bookingMode}
-          status={rideStatus === 'searching' ? 'Procurando motorista...' : rideStatus === 'accepted' ? 'Motorista a caminho' : rideStatus === 'in_progress' ? 'Em viagem' : undefined}
-          origin={originCoords}
-          destination={destCoords}
-          driverLocation={currentRide?.driverLocation || MOCK_DRIVER.location}
-          recenterTrigger={recenterCount}
-          fitBoundsPadding={{ top: 150, bottom: 380, left: 70, right: 70 }}
-        />
-      </div>
+  const RenderRide = () => {
+    // Mock ETA calculation (or use real if available)
+    // Assuming 1km ~ 2min in city
+    const distToOrigin = currentRide?.driverLocation && originCoords
+      ? Math.sqrt(Math.pow(currentRide.driverLocation.lat - originCoords.lat, 2) + Math.pow(currentRide.driverLocation.lng - originCoords.lng, 2)) * 111 // rough km
+      : 0;
 
-      <div className="absolute bottom-0 left-0 right-0 z-20 bg-white rounded-t-3xl shadow-2xl p-5 pb-[calc(2rem+env(safe-area-inset-bottom))]">
-        <div className="flex items-center justify-between mb-4">
-          {currentRide?.securityCode ? (<div className="bg-orange-50 px-3 py-1.5 rounded-lg border border-orange-100 flex items-center gap-2 shadow-sm"><Lock size={16} className="text-orange-600" /><div className="flex flex-col"><span className="text-[10px] text-orange-800 font-bold leading-none">Código</span><span className="text-lg font-mono font-bold leading-none text-orange-900">{currentRide.securityCode}</span></div></div>) : <div></div>}
-          <div className="flex gap-2">
-            {currentRide?.paymentMethod === 'corporate' && <Badge color="orange">Corporativo</Badge>}
-            <Badge color="blue">{currentRide?.serviceType?.replace('_', ' ')}</Badge>
-          </div>
-        </div>
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <div className="relative"><img src={currentRide?.driver?.avatar || MOCK_DRIVER.avatar} className="w-14 h-14 rounded-full border-2 border-orange-500 p-0.5 object-cover" alt="Driver" /></div>
-            <div><h3 className="font-bold text-lg text-gray-900">{currentRide?.driver?.name || "Motorista"}</h3><p className="text-sm text-gray-500">{currentRide?.driver?.vehicle || "Veículo"}</p></div>
-          </div>
+    const etaMinutes = Math.max(1, Math.ceil(distToOrigin * 3)); // 3 mins per km approx
+    const statusText = rideStatus === 'accepted' ? 'Mototaxista a caminho' : rideStatus === 'in_progress' ? 'Em viagem' : 'Aguardando';
 
-          {/* Botão Toggle para Detalhes da Corrida */}
-          <button
-            onClick={() => setShowRideDetails(!showRideDetails)}
-            className="flex items-center gap-1 bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-2 rounded-lg text-xs font-medium transition-colors"
-          >
-            {showRideDetails ? <EyeOff size={14} /> : <Eye size={14} />}
-            {showRideDetails ? 'Ocultar' : 'Detalhes'}
-          </button>
+    return (
+      <>
+        {showPixModal && <RenderPixModal />}
+
+        {/* Map Layer - Full Screen */}
+        <div className="absolute inset-0 z-0">
+          <SimulatedMap
+            showDriver={!!currentRide && step === 'ride'}
+            showRoute={!!routeInfo && bookingMode}
+            origin={originCoords}
+            destination={destCoords}
+            driverLocation={currentRide?.driverLocation || MOCK_DRIVER.location}
+            recenterTrigger={recenterCount}
+            // Dynamic padding for the new bottom sheet height
+            fitBoundsPadding={{ top: 100, bottom: 400, left: 40, right: 40 }}
+          />
         </div>
 
-        {/* Card de Detalhes da Corrida */}
-        {showRideDetails && (
-          <div className="mb-4 animate-fade-in">
-            <div className="bg-gray-50 border border-gray-100 rounded-xl p-3 shadow-inner">
-              <div className="mb-2 pb-2 border-b border-gray-200">
-                <p className="text-[10px] uppercase text-gray-400 font-bold mb-1">Origem</p>
-                <p className="text-sm text-gray-800 font-medium leading-tight">{routePoints[0].address}</p>
-              </div>
-              <div className="mb-2 pb-2 border-b border-gray-200">
-                <p className="text-[10px] uppercase text-gray-400 font-bold mb-1">Destino</p>
-                <p className="text-sm text-gray-800 font-medium leading-tight">{routePoints[routePoints.length - 1].address}</p>
-              </div>
-              <div>
-                <p className="text-[10px] uppercase text-gray-400 font-bold mb-1">Motorista</p>
-                <p className="text-sm text-gray-800 font-medium">{currentRide?.driver?.name}</p>
-              </div>
+        {/* Top Floating Status Pill */}
+        <div className="absolute top-12 left-0 right-0 z-10 flex justify-center pointer-events-none fade-in">
+          <div className="bg-white/95 backdrop-blur-md px-6 py-3 rounded-full shadow-lg border-l-4 border-orange-500 flex items-center gap-3 animate-slide-down pointer-events-auto">
+            {rideStatus === 'accepted' && (
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+            )}
+            <div>
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider leading-none mb-0.5">Status</p>
+              <p className="font-bold text-gray-800 leading-none">{statusText}</p>
             </div>
           </div>
-        )}
-
-        {/* FEEDBACK DE PAGAMENTO */}
-        {paymentFeedback && (
-          <div className={`mb-4 p-4 rounded-xl flex items-center gap-3 animate-fade-in ${paymentFeedback.type === 'success' ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200'
-            }`}>
-            <div className={`p-2 rounded-full ${paymentFeedback.type === 'success' ? 'bg-green-100' : 'bg-red-100'}`}>
-              {paymentFeedback.type === 'success' ? <CheckCircle size={20} className="text-green-600" /> : <AlertCircle size={20} className="text-red-600" />}
-            </div>
-            <span className="font-bold text-sm">{paymentFeedback.message}</span>
-          </div>
-        )}
-
-        <Button fullWidth onClick={handlePay} disabled={isPaying || currentRide?.paymentStatus === 'completed'} className={`mb-2 ${currentRide?.paymentStatus === 'completed' ? 'bg-green-500 hover:bg-green-600' : ''}`}>{currentRide?.paymentStatus === 'completed' ? <><CheckCircle size={20} /> Pagamento Realizado</> : "Pagar Agora"}</Button>
-        <div className="grid grid-cols-2 gap-3"><Button variant="secondary" onClick={() => setShowChat(true)}><MessageSquare size={18} /> Chat</Button><Button variant="secondary"><Phone size={18} /> Ligar</Button></div>
-
-        {/* Emergency Exit for Stuck Rides */}
-        <div className="mt-4 pt-4 border-t border-gray-100 text-center">
-          <button
-            onClick={() => {
-              if (confirm("Deseja sair desta tela? Se a corrida já foi finalizada, isso retornará ao início.")) {
-                setStep('home');
-                // Also clear current ride local state to be safe
-                setCurrentRide(null);
-                setCurrentRideId(null);
-                setRideStatus('');
-              }
-            }}
-            className="text-gray-400 text-xs font-bold hover:text-gray-600 underline"
-          >
-            Problemas? Voltar ao Início
-          </button>
         </div>
-      </div>
-    </>
-  );
+
+        {/* Premium Bottom Sheet */}
+        <div className="absolute bottom-0 left-0 right-0 z-20 bg-white rounded-t-[35px] shadow-[0_-10px_40px_rgba(0,0,0,0.15)] flex flex-col animate-slide-up">
+
+          {/* Drag Handle */}
+          <div className="w-full flex justify-center pt-3 pb-1">
+            <div className="w-12 h-1.5 bg-gray-200 rounded-full"></div>
+          </div>
+
+          <div className="px-6 pb-6 pb-safe-4 pt-2">
+
+            {/* ETA Header */}
+            <div className="border-b border-gray-100 pb-5 mb-5 text-center">
+              <p className="text-sm font-bold text-gray-400 uppercase mb-1">{rideStatus === 'in_progress' ? 'Chegada em' : 'Tempo de espera'}</p>
+              <h2 className="text-3xl font-black text-gray-800 flex items-center justify-center gap-2">
+                {etaMinutes} <span className="text-xl font-bold text-gray-500">min</span>
+              </h2>
+              <p className="text-xs text-gray-400 mt-1 font-medium">Previsão atualizada em tempo real</p>
+            </div>
+
+            {/* Driver Profile Section */}
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-4">
+                <div className="relative">
+                  <img
+                    src={currentRide?.driver?.avatar || MOCK_DRIVER.avatar}
+                    className="w-16 h-16 rounded-full border-[3px] border-orange-500 p-0.5 object-cover shadow-sm"
+                    alt="Driver"
+                  />
+                  <div className="absolute -bottom-1 -right-1 bg-white rounded-full px-1.5 py-0.5 shadow border border-gray-100 flex items-center gap-0.5">
+                    <Star size={10} className="text-yellow-400 fill-yellow-400" />
+                    <span className="text-[10px] font-bold text-gray-700">5.0</span>
+                  </div>
+                </div>
+                <div>
+                  <h3 className="font-black text-xl text-gray-900 leading-tight">{currentRide?.driver?.name || "Motorista"}</h3>
+                  <p className="text-sm text-gray-500 font-medium">{currentRide?.driver?.totalRides || "500+"} corridas</p>
+                </div>
+              </div>
+
+              {/* Communication Buttons */}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowChat(true)}
+                  className="w-12 h-12 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-700 transition"
+                >
+                  <MessageSquare size={22} />
+                </button>
+                <button
+                  className="w-12 h-12 rounded-full bg-orange-100 hover:bg-orange-200 flex items-center justify-center text-orange-600 transition"
+                >
+                  <Phone size={22} />
+                </button>
+              </div>
+            </div>
+
+            {/* Vehicle Info Card */}
+            <div className="bg-gray-50 rounded-2xl p-4 flex items-center justify-between border border-gray-100 mb-6">
+              <div className="flex items-center gap-4">
+                <div className="text-gray-400">
+                  <FaMotorcycle size={32} />
+                </div>
+                <div>
+                  <p className="text-2xl font-mono font-bold text-gray-800 tracking-wider leading-none mb-1">
+                    {currentRide?.driver?.plate || "ABC-1234"}
+                  </p>
+                  <p className="text-sm text-gray-500 font-medium">
+                    {currentRide?.driver?.vehicle || "Honda CG 160"} • {currentRide?.driver?.color || "Vermelha"}
+                  </p>
+                </div>
+              </div>
+              {currentRide?.securityCode && (
+                <div className="text-right">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase">PIN</p>
+                  <p className="text-xl font-bold text-orange-600">{currentRide.securityCode}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Cancel Button with Warning */}
+            <div className="mt-2">
+              <button
+                onClick={() => {
+                  if (confirm("ATENÇÃO: Cancelar agora pode gerar uma taxa de R$ 5,00 pois o motorista já está a caminho.\n\nDeseja realmente cancelar?")) {
+                    // In a real app, logic to apply fee
+                    setStep('home');
+                    setCurrentRide(null);
+                    setRideStatus('');
+                  }
+                }}
+                className="w-full py-3 rounded-xl border border-red-100 text-red-500 font-bold hover:bg-red-50 hover:border-red-200 transition text-sm"
+              >
+                Cancelar Corrida
+              </button>
+            </div>
+
+          </div>
+        </div>
+      </>
+    );
+  }
 
   const handleSelectFavorite = (address: string) => {
     setRoutePoints(prev => {
@@ -2259,6 +2330,76 @@ export const UserApp = () => {
       {step === 'select_dest' && RenderSelectDest()}
       {(step === 'confirm' || step === 'searching') && RenderConfirm()}
       {step === 'ride' && RenderRide()}
+
+      {/* Rating Modal - Passenger rates Driver */}
+      {showRatingModal && currentRide?.driver && (
+        <div className="absolute inset-0 z-[200] bg-black/60 flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl text-center">
+            {/* Driver Avatar */}
+            <div className="mb-4">
+              <img
+                src={currentRide.driver.avatar || 'https://ui-avatars.com/api/?name=Driver'}
+                alt="Driver"
+                className="w-20 h-20 rounded-full mx-auto border-4 border-orange-500 object-cover"
+              />
+            </div>
+
+            {/* Driver Name */}
+            <h2 className="text-xl font-bold text-gray-800 mb-1">{currentRide.driver.name}</h2>
+            <p className="text-sm text-gray-500 mb-4">{currentRide.driver.vehicle} • {currentRide.driver.plate}</p>
+
+            {/* Rating Prompt */}
+            <p className="text-gray-600 font-medium mb-3">Como foi sua viagem?</p>
+
+            {/* Star Rating */}
+            <div className="flex justify-center gap-2 mb-5">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                  key={star}
+                  onClick={() => setDriverRating(star)}
+                  className="transition-transform hover:scale-110"
+                >
+                  <Star
+                    size={36}
+                    className={star <= driverRating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'}
+                  />
+                </button>
+              ))}
+            </div>
+
+            {/* Favorite Toggle */}
+            <button
+              onClick={() => setIsFavoriteDriver(!isFavoriteDriver)}
+              className={`flex items-center justify-center gap-2 w-full py-2.5 rounded-xl mb-4 border transition ${isFavoriteDriver
+                ? 'bg-red-50 border-red-200 text-red-600'
+                : 'bg-gray-50 border-gray-200 text-gray-600'
+                }`}
+            >
+              <Heart size={18} className={isFavoriteDriver ? 'fill-red-500' : ''} />
+              <span className="font-medium">{isFavoriteDriver ? 'Piloto Favorito!' : 'Adicionar aos Favoritos'}</span>
+            </button>
+
+            {/* Submit Button */}
+            <Button fullWidth onClick={submitDriverRating} className="mb-2">
+              Enviar Avaliação
+            </Button>
+
+            {/* Skip Button */}
+            <button
+              onClick={() => {
+                setShowRatingModal(false);
+                setStep('home');
+                setCurrentRide(null);
+                setCurrentRideId(null);
+              }}
+              className="text-sm text-gray-400 hover:text-gray-600"
+            >
+              Pular
+            </button>
+          </div>
+        </div>
+      )}
+
       {step === 'history' && RenderHistory()}
       {step === 'payments' && RenderPayments()}
       {step === 'help' && RenderHelp()}

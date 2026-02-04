@@ -109,7 +109,10 @@ export const createRideRequest = async (
   securityCode?: string,
   paymentMethod: PaymentMethod = 'pix',
   companyId?: string,
-  routePolyline?: string
+  paymentMethod: PaymentMethod = 'pix',
+  companyId?: string,
+  routePolyline?: string,
+  pickupReference?: string
 ): Promise<string> => {
 
   if (isMockMode || !db) {
@@ -133,42 +136,47 @@ export const createRideRequest = async (
       companyId,
       paymentMethod,
       paymentStatus: paymentMethod === 'corporate' ? 'pending_invoice' : 'pending',
-      routePolyline
-    };
-    const rides = getMockRides();
-    rides.push(newRide);
-    saveMockRides(rides);
-    triggerN8NWebhook('ride_requested', newRide);
-    return id;
-  }
-
-  try {
-    const docRef = await addDoc(collection(db, RIDES_COLLECTION), {
-      passenger,
-      origin,
-      destination,
-      originCoords,
-      destinationCoords,
-      serviceType,
-      price,
-      distance,
-      duration,
-      status: 'pending',
-      createdAt: serverTimestamp(),
-      driver: null,
-      paymentMethod,
-      ...(companyId && { companyId }),
       paymentStatus: paymentMethod === 'corporate' ? 'pending_invoice' : 'pending',
-      ...(deliveryDetails && { deliveryDetails }),
-      ...(securityCode && { securityCode }),
-      ...(routePolyline && { routePolyline })
-    });
-    triggerN8NWebhook('ride_requested', { id: docRef.id, passenger, origin, destination, price });
-    return docRef.id;
-  } catch (error) {
-    console.error("Erro ao criar corrida no Firestore:", error);
-    throw error;
-  }
+      routePolyline,
+      pickupReference
+    };
+  };
+  const rides = getMockRides();
+  rides.push(newRide);
+  saveMockRides(rides);
+  triggerN8NWebhook('ride_requested', newRide);
+  return id;
+}
+
+try {
+  const docRef = await addDoc(collection(db, RIDES_COLLECTION), {
+    passenger,
+    origin,
+    destination,
+    originCoords,
+    destinationCoords,
+    serviceType,
+    price,
+    distance,
+    duration,
+    status: 'pending',
+    createdAt: serverTimestamp(),
+    driver: null,
+    paymentMethod,
+    ...(companyId && { companyId }),
+    paymentStatus: paymentMethod === 'corporate' ? 'pending_invoice' : 'pending',
+    ...(deliveryDetails && { deliveryDetails }),
+    ...(securityCode && { securityCode }),
+    ...(securityCode && { securityCode }),
+    ...(routePolyline && { routePolyline }),
+    ...(pickupReference && { pickupReference })
+  });
+  triggerN8NWebhook('ride_requested', { id: docRef.id, passenger, origin, destination, price });
+  return docRef.id;
+} catch (error) {
+  console.error("Erro ao criar corrida no Firestore:", error);
+  throw error;
+}
 };
 
 export const subscribeToRide = (rideId: string, onUpdate: (ride: RideRequest) => void) => {

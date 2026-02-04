@@ -6,6 +6,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import { APP_CONFIG } from '../constants';
 import { Coords, Driver } from '../types';
 import { Loader2, AlertTriangle, Leaf, Flag, MapPin, Pencil, Clock } from 'lucide-react';
+import { FaMotorcycle } from 'react-icons/fa';
 
 
 
@@ -109,6 +110,44 @@ const MapboxMapInner: React.FC<MapProps> = (props) => {
     const { origin, destination, driverLocation, showDriver, waypoints } = propsRef.current;
 
     const points: Coords[] = [];
+
+    // SMART ZOOM LOGIC
+    // If we are in "Ride Mode" (showDriver is true) AND we have driver location AND origin
+    if (showDriver && driverLocation && origin) {
+      // Calculate distance between driver and origin (approx)
+      const R = 6371e3; // metres
+      const φ1 = origin.lat * Math.PI / 180;
+      const φ2 = driverLocation.lat * Math.PI / 180;
+      const Δφ = (driverLocation.lat - origin.lat) * Math.PI / 180;
+      const Δλ = (driverLocation.lng - origin.lng) * Math.PI / 180;
+      const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+        Math.cos(φ1) * Math.cos(φ2) *
+        Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const dist = R * c; // Distance in meters
+
+      if (dist < 1000) { // Less than 1km - ARRIVAL MODE
+        // Focus on Driver and Origin with high zoom
+        // We want to see the "Arrival" clearly
+        const arrivalPoints = [driverLocation, origin];
+
+        const minLng = Math.min(...arrivalPoints.map(p => p.lng));
+        const maxLng = Math.max(...arrivalPoints.map(p => p.lng));
+        const minLat = Math.min(...arrivalPoints.map(p => p.lat));
+        const maxLat = Math.max(...arrivalPoints.map(p => p.lat));
+
+        // Use tighter padding for arrival
+        const arrivalPadding = { top: 100, bottom: 400, left: 50, right: 50 }; // High bottom padding for card
+
+        mapInstance.fitBounds(
+          [[minLng, minLat], [maxLng, maxLat]],
+          { padding: arrivalPadding, duration: 2000, maxZoom: 17.5, linear: true } // Linear for smoother tracking
+        );
+        return;
+      }
+      // Else: Fall through to standard bounds (Driver + Origin entire route view)
+    }
+
     if (origin) points.push(origin);
     if (destination) points.push(destination);
     if (driverLocation && showDriver) points.push(driverLocation);
@@ -152,7 +191,7 @@ const MapboxMapInner: React.FC<MapProps> = (props) => {
     if (mapRef.current) {
       fitBounds(mapRef.current);
     }
-  }, [recenterTrigger, showRoute, fitBounds]); // Only re-fit on explicit trigger or route visibility toggle
+  }, [recenterTrigger, showRoute, fitBounds, driverLocation]); // Added driverLocation to auto-follow
 
   // Fetch Route from Mapbox Directions API
   useEffect(() => {
@@ -311,7 +350,18 @@ const MapboxMapInner: React.FC<MapProps> = (props) => {
 
       {showDriver && driverLocation && !drivers && (
         <MapboxMarker longitude={driverLocation.lng} latitude={driverLocation.lat}>
-          <div className="bg-green-500 w-4 h-4 rounded-full border-2 border-white shadow-md"></div>
+          {/* Enhanced Driver Marker with Motorcycle Icon */}
+          <div
+            className="relative flex items-center justify-center"
+            style={{ transition: 'transform 1s ease-out' }}
+          >
+            {/* Outer Pulse */}
+            <div className="absolute w-12 h-12 bg-green-400/30 rounded-full animate-ping" />
+            {/* Main Circle */}
+            <div className="w-10 h-10 bg-green-500 rounded-full border-[3px] border-white shadow-xl flex items-center justify-center z-10">
+              <FaMotorcycle size={18} color="white" />
+            </div>
+          </div>
         </MapboxMarker>
       )}
 
