@@ -1681,15 +1681,15 @@ const AdminDashboardContent = ({ onLogout }: { onLogout?: () => void }) => {
     }));
   };
 
-  const SidebarItem = ({ id, icon, label, badge }: { id: string, icon: React.ReactNode, label: string, badge?: number }) => (
+  const SidebarItem = ({ id, icon, label, badge }: { id: string, icon: React.ReactNode, label: string, badge?: number | string }) => (
     <div
       onClick={() => setActiveTab(id)}
       className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all mb-1 ${activeTab === id ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/30' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
     >
       {icon}
       <span className="font-medium flex-1">{label}</span>
-      {badge && badge > 0 && (
-        <span className={`w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center ${activeTab === id ? 'bg-white text-orange-500' : 'bg-red-500 text-white'}`}>
+      {badge && (
+        <span className={`px-1.5 h-5 min-w-[20px] rounded-full text-[10px] font-bold flex items-center justify-center ${activeTab === id ? 'bg-white text-orange-500' : 'bg-red-500 text-white'}`}>
           {badge}
         </span>
       )}
@@ -2640,7 +2640,7 @@ const AdminDashboardContent = ({ onLogout }: { onLogout?: () => void }) => {
           <p className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-3 mt-6 px-2">Configuração</p>
           <SidebarItem id="settings" icon={<Settings size={20} />} label="Ajustes" />
           <SidebarItem id="integrations" icon={<Zap size={20} />} label="Integrações" />
-          <SidebarItem id="campaigns" icon={<Megaphone size={20} />} label="Campanhas" />
+          <SidebarItem id="campaigns" icon={<Megaphone size={20} />} label="Campanhas" badge="NOVO" />
         </div>
 
         <div className="p-4 border-t border-gray-800">

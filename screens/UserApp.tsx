@@ -1319,7 +1319,7 @@ export const UserApp = () => {
         {/* Bottom Sheet - Main Content */}
         <div className="mt-auto pointer-events-auto">
           {/* Rounded top card */}
-          <div className="bg-white rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.15)] pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+          <div className="bg-white rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.15)] pb-[calc(1.5rem+env(safe-area-inset-bottom))] animate-slide-up-slow">
 
             {/* Search Status Header with Progress Bar */}
             <div className="px-5 pt-5 pb-4">
