@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Shield, Power, DollarSign, User, MessageSquare, Phone, History, Calendar, X, Settings, Loader2, AlertCircle, RefreshCw, Lock, ArrowRight, Navigation, MapPin, LogOut, Star, Sun, Moon, ThumbsUp, Flag, LifeBuoy, Send, CheckCircle, Trash2, Image as ImageIcon } from 'lucide-react';
+import { Shield, Power, DollarSign, User, MessageSquare, Phone, History, Calendar, X, Settings, Loader2, AlertCircle, RefreshCw, Lock, ArrowRight, Navigation, MapPin, LogOut, Star, Sun, Moon, ThumbsUp, Flag, LifeBuoy, Send, CheckCircle, Trash2, Image as ImageIcon, ChevronRight } from 'lucide-react';
 import { Button, Badge, Card, Input } from '../components/UI';
 import { SimulatedMap } from '../components/SimulatedMap';
 import { ChatModal } from '../components/ChatModal';
@@ -651,7 +651,16 @@ export const DriverApp = () => {
         {/* Modal de Nova Corrida (Real) */}
         {currentRequest && !activeRide && (
           <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end p-4">
-            <div className={`w-full bg-gray-800 rounded-2xl p-5 shadow-2xl border border-gray-700 ${requestAnimation}`}>
+            <div className={`w-full bg-gray-800 rounded-2xl p-5 shadow-2xl border border-gray-700 relative ${requestAnimation}`}>
+
+              {/* X Button - Top Right Corner */}
+              <button
+                onClick={handleRejectRide}
+                className="absolute -top-3 -right-3 w-10 h-10 bg-gray-700 hover:bg-red-500 rounded-full flex items-center justify-center text-white shadow-xl border-2 border-gray-600 hover:border-red-400 transition-all z-10 active:scale-90"
+              >
+                <X size={20} strokeWidth={3} />
+              </button>
+
               <div className="flex justify-between items-start mb-4">
                 <Badge color="orange">{currentRequest.serviceType}</Badge>
                 <span className="text-xl font-bold text-white">R$ {(currentRequest.price || 0).toFixed(2)}</span>
@@ -677,15 +686,52 @@ export const DriverApp = () => {
                 </div>
               </div>
 
-              <div className="flex gap-3 h-14">
-                <Button className="flex-1 bg-gray-700" onClick={handleRejectRide}>Recusar</Button>
-                <Button
-                  onClick={() => handleAcceptRide(currentRequest)}
-                  isLoading={processingId === currentRequest.id}
-                  className="flex-[2] bg-green-500 hover:bg-green-600 shadow-lg shadow-green-500/20 animate-pulse"
+              {/* Slide to Accept Button */}
+              <div className="relative h-14 bg-gray-700 rounded-xl overflow-hidden select-none">
+                {/* Background Text */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-gray-400 font-bold text-sm flex items-center gap-2">
+                    <ChevronRight size={16} className="animate-pulse" />
+                    Deslize para aceitar
+                    <ChevronRight size={16} className="animate-pulse" />
+                  </span>
+                </div>
+
+                {/* Slider Track */}
+                <div
+                  className="absolute left-1 top-1 bottom-1 w-12 bg-green-500 rounded-lg flex items-center justify-center cursor-grab active:cursor-grabbing shadow-lg z-10 hover:bg-green-400 transition group"
+                  draggable
+                  onDragEnd={(e) => {
+                    const target = e.target as HTMLElement;
+                    const parent = target.parentElement;
+                    if (parent) {
+                      const rect = parent.getBoundingClientRect();
+                      const endX = e.clientX - rect.left;
+                      // If dragged more than 70% of the width, accept
+                      if (endX > rect.width * 0.65) {
+                        handleAcceptRide(currentRequest);
+                      }
+                    }
+                  }}
+                  onTouchEnd={(e) => {
+                    const touch = e.changedTouches[0];
+                    const target = e.target as HTMLElement;
+                    const parent = target.parentElement;
+                    if (parent && touch) {
+                      const rect = parent.getBoundingClientRect();
+                      const endX = touch.clientX - rect.left;
+                      if (endX > rect.width * 0.65) {
+                        handleAcceptRide(currentRequest);
+                      }
+                    }
+                  }}
                 >
-                  Aceitar Corrida
-                </Button>
+                  {processingId === currentRequest.id ? (
+                    <Loader2 size={20} className="text-white animate-spin" />
+                  ) : (
+                    <ChevronRight size={24} className="text-white group-hover:translate-x-0.5 transition-transform" />
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -1176,4 +1222,3 @@ export const DriverApp = () => {
   );
 };
 // End of component
-```
