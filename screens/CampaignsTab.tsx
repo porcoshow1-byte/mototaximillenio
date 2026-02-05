@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
-import { Plus, Trash2, ImageIcon, ExternalLink, CheckCircle, X, Loader2, Megaphone } from 'lucide-react';
+import { Plus, Trash2, ImageIcon, ExternalLink, CheckCircle, X, Loader2, Megaphone, Pencil } from 'lucide-react';
 import { Card, Button, Input } from '../components/UI';
 import { SystemSettings, CampaignBanner } from '../services/settings';
 import { uploadFile } from '../services/storage';
+import { compressImage } from '../services/image';
 
 interface CampaignsTabProps {
     settings: SystemSettings;
@@ -18,14 +19,19 @@ export const CampaignsTab: React.FC<CampaignsTabProps> = ({
     savingSettings
 }) => {
     const [isUploading, setIsUploading] = useState(false);
+    const [editingCampaignId, setEditingCampaignId] = useState<string | null>(null);
     const [newCampaign, setNewCampaign] = useState<{
         title: string;
         imageUrl: string;
         linkUrl: string;
+        showCta: boolean;
+        ctaType: 'saiba_mais' | 'ligar' | 'whatsapp' | 'eu_quero' | 'comprar' | 'pedir_agora' | 'chamar_zap' | 'zap' | 'chama';
     }>({
         title: '',
         imageUrl: '',
-        linkUrl: ''
+        linkUrl: '',
+        showCta: false,
+        ctaType: 'saiba_mais'
     });
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -37,8 +43,11 @@ export const CampaignsTab: React.FC<CampaignsTabProps> = ({
 
         setIsUploading(true);
         try {
+            // Compress image if needed (max 1MB, max width 1280px)
+            const processedFile = await compressImage(file);
+
             // Upload to Firebase Storage
-            const url = await uploadFile(file, `campaigns/${Date.now()}_${file.name}`);
+            const url = await uploadFile(processedFile, `campaigns/${Date.now()}_${processedFile.name}`);
             setNewCampaign(prev => ({ ...prev, imageUrl: url }));
         } catch (error) {
             console.error('Failed to upload banner:', error);
@@ -53,26 +62,77 @@ export const CampaignsTab: React.FC<CampaignsTabProps> = ({
         }
     };
 
-    const handleAddCampaign = () => {
+    const handleSaveInput = () => {
         if (!newCampaign.title || !newCampaign.imageUrl) return;
 
-        const campaign: CampaignBanner = {
-            id: `campaign-${Date.now()}`,
-            title: newCampaign.title,
-            imageUrl: newCampaign.imageUrl,
-            linkUrl: newCampaign.linkUrl || undefined,
-            active: true,
-            createdAt: new Date().toISOString()
-        };
+        if (editingCampaignId) {
+            // Update existing
+            setSettings(prev => ({
+                ...prev,
+                campaigns: (prev.campaigns || []).map(c =>
+                    c.id === editingCampaignId ? {
+                        ...c,
+                        title: newCampaign.title,
+                        imageUrl: newCampaign.imageUrl,
+                        linkUrl: newCampaign.linkUrl || undefined,
+                        showCta: newCampaign.showCta,
+                        ctaType: newCampaign.ctaType
+                    } : c
+                )
+            }));
+            setEditingCampaignId(null);
+        } else {
+            // Create new
+            const campaign: CampaignBanner = {
+                id: `campaign-${Date.now()}`,
+                title: newCampaign.title,
+                imageUrl: newCampaign.imageUrl,
+                linkUrl: newCampaign.linkUrl || undefined,
+                showCta: newCampaign.showCta,
+                ctaType: newCampaign.ctaType,
+                active: true,
+                createdAt: new Date().toISOString()
+            };
 
-        setSettings(prev => ({
-            ...prev,
-            campaigns: [...(prev.campaigns || []), campaign],
-            // Auto-activate if it's the first campaign
-            activeCampaignBanner: !prev.activeCampaignBanner ? campaign.imageUrl : prev.activeCampaignBanner
-        }));
+            setSettings(prev => ({
+                ...prev,
+                campaigns: [...(prev.campaigns || []), campaign],
+                activeCampaignBanner: !prev.activeCampaignBanner ? campaign.imageUrl : prev.activeCampaignBanner
+            }));
+        }
 
-        setNewCampaign({ title: '', imageUrl: '', linkUrl: '' });
+        // Reset form
+        setNewCampaign({
+            title: '',
+            imageUrl: '',
+            linkUrl: '',
+            showCta: false,
+            ctaType: 'saiba_mais'
+        });
+    };
+
+    const handleEditCampaign = (campaign: CampaignBanner) => {
+        setEditingCampaignId(campaign.id);
+        setNewCampaign({
+            title: campaign.title,
+            imageUrl: campaign.imageUrl,
+            linkUrl: campaign.linkUrl || '',
+            showCta: campaign.showCta || false,
+            ctaType: campaign.ctaType || 'saiba_mais'
+        });
+        // Scroll to top
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    const handleCancelEdit = () => {
+        setEditingCampaignId(null);
+        setNewCampaign({
+            title: '',
+            imageUrl: '',
+            linkUrl: '',
+            showCta: false,
+            ctaType: 'saiba_mais'
+        });
     };
 
     const handleDeleteCampaign = (id: string) => {
@@ -130,10 +190,19 @@ export const CampaignsTab: React.FC<CampaignsTabProps> = ({
             </div>
 
             {/* Add New Campaign */}
-            <Card className="p-6">
+            <Card className={`p-6 ${editingCampaignId ? 'border-2 border-orange-500 bg-orange-50/10' : ''}`}>
                 <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                    <Plus size={20} className="text-orange-500" />
-                    Adicionar Nova Campanha
+                    {editingCampaignId ? (
+                        <>
+                            <Pencil size={20} className="text-orange-500" />
+                            Editar Campanha
+                        </>
+                    ) : (
+                        <>
+                            <Plus size={20} className="text-orange-500" />
+                            Adicionar Nova Campanha
+                        </>
+                    )}
                 </h3>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -165,6 +234,49 @@ export const CampaignsTab: React.FC<CampaignsTabProps> = ({
                             </p>
                         </div>
 
+                        <div className="flex items-center gap-4 p-3 bg-gray-50 rounded-xl border border-gray-100">
+                            <div className="flex items-center h-5">
+                                <input
+                                    id="showCta"
+                                    type="checkbox"
+                                    checked={newCampaign.showCta}
+                                    onChange={(e) => setNewCampaign(prev => ({ ...prev, showCta: e.target.checked }))}
+                                    className="w-4 h-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500"
+                                />
+                            </div>
+                            <div className="flex-1">
+                                <label htmlFor="showCta" className="text-sm font-medium text-gray-700 select-none cursor-pointer">
+                                    Exibir Botão de Ação
+                                </label>
+                                <p className="text-xs text-gray-500">
+                                    Adiciona um botão chamativo sobre o banner.
+                                </p>
+                            </div>
+                        </div>
+
+                        {newCampaign.showCta && (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Texto do Botão
+                                </label>
+                                <select
+                                    value={newCampaign.ctaType}
+                                    onChange={(e) => setNewCampaign(prev => ({ ...prev, ctaType: e.target.value as any }))}
+                                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                                >
+                                    <option value="saiba_mais">Saiba mais</option>
+                                    <option value="ligar">Ligar agora</option>
+                                    <option value="whatsapp">WhatsApp</option>
+                                    <option value="chamar_zap">Chamar no zap</option>
+                                    <option value="zap">Zap</option>
+                                    <option value="chama">Chama</option>
+                                    <option value="eu_quero">Eu quero!</option>
+                                    <option value="comprar">Comprar agora</option>
+                                    <option value="pedir_agora">Pedir agora</option>
+                                </select>
+                            </div>
+                        )}
+
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">
                                 Imagem do Banner *
@@ -191,18 +303,38 @@ export const CampaignsTab: React.FC<CampaignsTabProps> = ({
                                 </Button>
                             </div>
                             <p className="text-xs text-gray-400 mt-1">
-                                Tamanho recomendado: 360x120px (proporção 3:1)
+                                Tamanho recomendado: 840x360px (proporção 21:9)
                             </p>
                         </div>
 
-                        <Button
-                            onClick={handleAddCampaign}
-                            disabled={!newCampaign.title || !newCampaign.imageUrl || isUploading}
-                            className="w-full"
-                        >
-                            <Plus size={16} className="mr-2" />
-                            Adicionar Campanha
-                        </Button>
+                        <div className="flex gap-2">
+                            {editingCampaignId && (
+                                <Button
+                                    variant="secondary"
+                                    onClick={handleCancelEdit}
+                                    className="flex-1"
+                                >
+                                    Cancelar
+                                </Button>
+                            )}
+                            <Button
+                                onClick={handleSaveInput}
+                                disabled={!newCampaign.title || !newCampaign.imageUrl || isUploading}
+                                className="flex-1"
+                            >
+                                {editingCampaignId ? (
+                                    <>
+                                        <CheckCircle size={16} className="mr-2" />
+                                        Salvar Alterações
+                                    </>
+                                ) : (
+                                    <>
+                                        <Plus size={16} className="mr-2" />
+                                        Adicionar Campanha
+                                    </>
+                                )}
+                            </Button>
+                        </div>
                     </div>
 
                     {/* Right: Preview */}
@@ -210,17 +342,34 @@ export const CampaignsTab: React.FC<CampaignsTabProps> = ({
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                             Pré-visualização
                         </label>
-                        <div className="bg-gray-900 rounded-2xl p-4 min-h-[200px] flex items-center justify-center">
+                        <div className={`rounded-2xl flex items-center justify-center ${newCampaign.imageUrl ? 'bg-transparent' : 'bg-gray-900 p-4 min-h-[200px]'}`}>
                             {newCampaign.imageUrl ? (
                                 <img
                                     src={newCampaign.imageUrl}
                                     alt="Preview"
-                                    className="max-h-32 rounded-xl object-cover shadow-lg"
+                                    className="w-full h-auto rounded-xl object-contain shadow-lg border border-gray-200"
                                 />
                             ) : (
                                 <div className="text-gray-500 text-center">
                                     <ImageIcon size={48} className="mx-auto mb-2 opacity-50" />
                                     <p className="text-sm">Nenhuma imagem selecionada</p>
+                                </div>
+                            )}
+
+                            {/* Preview CTA Button */}
+                            {newCampaign.imageUrl && newCampaign.showCta && (
+                                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                    <span className="bg-white text-orange-600 px-6 py-2 rounded-full text-sm font-bold shadow-lg uppercase tracking-wide transform hover:scale-105 transition-transform">
+                                        {newCampaign.ctaType === 'saiba_mais' && 'Saiba mais'}
+                                        {newCampaign.ctaType === 'ligar' && 'Ligar'}
+                                        {newCampaign.ctaType === 'whatsapp' && 'WhatsApp'}
+                                        {newCampaign.ctaType === 'chamar_zap' && 'Chamar no zap'}
+                                        {newCampaign.ctaType === 'zap' && 'Zap'}
+                                        {newCampaign.ctaType === 'chama' && 'Chama'}
+                                        {newCampaign.ctaType === 'eu_quero' && 'Eu quero!'}
+                                        {newCampaign.ctaType === 'comprar' && 'Comprar'}
+                                        {newCampaign.ctaType === 'pedir_agora' && 'Pedir agora'}
+                                    </span>
                                 </div>
                             )}
                         </div>
@@ -246,10 +395,10 @@ export const CampaignsTab: React.FC<CampaignsTabProps> = ({
                             <div
                                 key={campaign.id}
                                 className={`relative rounded-xl overflow-hidden border-2 transition-all ${settings.activeCampaignBanner === campaign.imageUrl
-                                        ? 'border-orange-500 shadow-lg'
-                                        : campaign.active
-                                            ? 'border-green-200'
-                                            : 'border-gray-200 opacity-60'
+                                    ? 'border-orange-500 shadow-lg'
+                                    : campaign.active
+                                        ? 'border-green-200'
+                                        : 'border-gray-200 opacity-60'
                                     }`}
                             >
                                 {/* Banner Image */}
@@ -288,8 +437,8 @@ export const CampaignsTab: React.FC<CampaignsTabProps> = ({
                                             <button
                                                 onClick={() => handleSetActiveMain(campaign.imageUrl)}
                                                 className={`px-2 py-1 text-xs rounded font-medium transition ${settings.activeCampaignBanner === campaign.imageUrl
-                                                        ? 'bg-orange-100 text-orange-600'
-                                                        : 'bg-gray-100 text-gray-600 hover:bg-orange-50 hover:text-orange-600'
+                                                    ? 'bg-orange-100 text-orange-600'
+                                                    : 'bg-gray-100 text-gray-600 hover:bg-orange-50 hover:text-orange-600'
                                                     }`}
                                                 title="Definir como principal"
                                             >
@@ -298,11 +447,19 @@ export const CampaignsTab: React.FC<CampaignsTabProps> = ({
                                             <button
                                                 onClick={() => handleToggleActive(campaign.id)}
                                                 className={`px-2 py-1 text-xs rounded font-medium transition ${campaign.active
-                                                        ? 'bg-green-100 text-green-600'
-                                                        : 'bg-gray-100 text-gray-500 hover:bg-green-50'
+                                                    ? 'bg-green-100 text-green-600'
+                                                    : 'bg-gray-100 text-gray-500 hover:bg-green-50'
                                                     }`}
                                             >
                                                 {campaign.active ? '✓ Ativo' : 'Inativo'}
+                                            </button>
+                                            <button
+                                                onClick={() => handleEditCampaign(campaign)}
+                                                className="px-2 py-1 text-xs rounded font-medium bg-blue-50 text-blue-600 hover:bg-blue-100 transition flex items-center gap-1"
+                                                title="Editar campanha"
+                                            >
+                                                <Pencil size={12} />
+                                                Editar
                                             </button>
                                         </div>
                                         <button

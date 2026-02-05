@@ -375,7 +375,8 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
       let cnhUrl = '';
       if (!isLogin && (role === 'driver' || role === 'driver-register') && cnhFile && storage) {
         try {
-          const storageRef = ref(storage, `drivers / ${uid || Date.now()} _cnh.jpg`);
+          const ext = cnhFile.name.split('.').pop() || 'pdf';
+          const storageRef = ref(storage, `drivers/${uid || Date.now()}_cnh.${ext}`);
           await uploadBytes(storageRef, cnhFile);
           cnhUrl = await getDownloadURL(storageRef);
         } catch (uploadError) {
@@ -784,9 +785,9 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
                       <Input label="Placa" value={plate} onChange={(e) => setPlate(e.target.value)} placeholder="ABC-1234" icon={<MapPin size={18} />} />
                     </div>
                     <div className="border-2 border-dashed border-gray-300 rounded-xl p-4 text-center hover:bg-gray-50 transition cursor-pointer relative group">
-                      <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => setCnhFile(e.target.files?.[0] || null)} accept="image/*" />
+                      <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e) => setCnhFile(e.target.files?.[0] || null)} accept="application/pdf" />
                       <div className="flex flex-col items-center gap-2 text-gray-500 group-hover:text-orange-600 transition-colors">
-                        {cnhFile ? <span className="text-green-600 font-bold flex items-center gap-2"><CheckCircle size={16} /> {cnhFile.name}</span> : <><Camera size={24} /> <span>Foto da CNH (Obrigatório)</span></>}
+                        {cnhFile ? <span className="text-green-600 font-bold flex items-center gap-2"><CheckCircle size={16} /> {cnhFile.name} (PDF)</span> : <><FileText size={24} /> <span>Anexar CNH Digital (Somente PDF)</span></>}
                       </div>
                     </div>
                   </>

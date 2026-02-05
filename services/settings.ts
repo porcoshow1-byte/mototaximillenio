@@ -87,6 +87,8 @@ export interface CampaignBanner {
     title: string;
     imageUrl: string;
     linkUrl?: string;
+    showCta?: boolean;
+    ctaType?: 'saiba_mais' | 'ligar' | 'whatsapp' | 'eu_quero' | 'comprar' | 'pedir_agora' | 'chamar_zap' | 'zap' | 'chama';
     active: boolean;
     createdAt: string;
 }

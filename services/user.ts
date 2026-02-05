@@ -131,14 +131,14 @@ export const getOrCreateUserProfile = async (
       return { ...data, ...updateData };
     }
     return data as User | Driver;
-  } else {
-    // FIRST: Check localStorage for saved profile (user might have edited offline)
-    const storageKey = `motoja_user_${uid}`;
-    const storedLocal = localStorage.getItem(storageKey);
   }
 
+  // FIRST: Check localStorage for saved profile (user might have edited offline)
+  const storageKey = `motoja_user_${uid}`;
+  const storedLocal = localStorage.getItem(storageKey);
+
   // Checking if doc exists in Firestore - if not, and we are not in mock mode, it implies account deleted or never created properly
-  if (!userSnap.exists() && !storedLocal) {
+  if (!storedLocal) {
     // If we are here, it means no local storage backup and no firestore doc. 
     // We should PROBABLY treat as new user, BUT if we want to enforce "deleted = deleted",
     // we need a way to detect if it was deleted vs just new.
@@ -196,7 +196,7 @@ export const getOrCreateUserProfile = async (
   await setDoc(userRef, newProfile);
   return newProfile;
 }
-};
+
 
 export const updateUserProfile = async (uid: string, data: Partial<User | Driver>) => {
   if (isMockMode || !db) {

@@ -5,7 +5,7 @@ import {
   Loader2, RefreshCcw, AlertTriangle, Download, Calendar, CheckSquare, Square,
   X, Phone, Car, Star, Shield, Plus, History, MessageSquare, Send, ChevronRight, ChevronLeft,
   Leaf, Building2, DollarSign, Calculator, GripVertical, MapPin, Package, Navigation, Clock, Route,
-  AlertCircle, CheckCircle, Paperclip, Trash2, Edit2, Zap, Mail, Share2, Palette, Image as ImageIcon, Smartphone, LifeBuoy, Megaphone
+  AlertCircle, CheckCircle, Paperclip, Trash2, Edit2, Zap, Mail, Share2, Palette, Image as ImageIcon, Smartphone, LifeBuoy, Megaphone, Eye, Lock, Unlock
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LineChart, Line, ResponsiveContainer } from 'recharts';
 import { Card, Button, Badge, Input, ConfirmationModal } from '../components/UI';
@@ -51,7 +51,7 @@ const SimpleTooltip = ({ content, children }: { content: string, children?: Reac
 );
 
 // --- Subcomponent: Driver Details Modal ---
-const DriverDetailModal = ({ driver, onClose }: { driver: Driver, onClose: () => void }) => {
+const DriverDetailModal = ({ driver, onClose, rides = [] }: { driver: Driver, onClose: () => void, rides?: any[] }) => {
   const [loading, setLoading] = useState(false);
   const [confirmModal, setConfirmModal] = useState({
     isOpen: false,
@@ -67,12 +67,13 @@ const DriverDetailModal = ({ driver, onClose }: { driver: Driver, onClose: () =>
       await updateUserProfile(driver.id, {
         verificationStatus: action === 'approve' ? 'approved' : 'rejected',
         status: action === 'approve' ? 'offline' : 'offline', // If blocked, force offline
-        rejectionReason: rejectionReason || undefined
+        rejectionReason: rejectionReason || null
       });
       onClose();
       window.location.reload(); // Simple reload to refresh data
     } catch (e) {
-      alert("Erro ao atualizar status");
+      console.error(e);
+      alert("Erro ao atualizar status: " + (e as any).message);
     } finally {
       setLoading(false);
     }
@@ -118,11 +119,11 @@ const DriverDetailModal = ({ driver, onClose }: { driver: Driver, onClose: () =>
               <div className="flex flex-wrap items-center gap-3 text-sm text-gray-400 mt-1">
                 <span className="flex items-center gap-1 bg-gray-800 px-2 py-0.5 rounded"><Star size={12} className="text-yellow-400 fill-current" /> {driver.rating}</span>
                 <span className="flex items-center gap-1 bg-gray-800 px-2 py-0.5 rounded"><Bike size={12} /> {driver.totalRides || 0} Corridas</span>
-                <span className="flex items-center gap-1 bg-gray-800 px-2 py-0.5 rounded text-gray-300">ID: {driver.id}</span>
+                <span className="flex items-center gap-1 bg-gray-800 px-2 py-0.5 rounded text-gray-300">ID: {driver.id.substring(0, 10).toUpperCase()}</span>
               </div>
               <div className="mt-2">
                 <Badge color={driver.verificationStatus === 'approved' ? 'green' : driver.verificationStatus === 'rejected' ? 'red' : 'orange'}>
-                  {driver.verificationStatus === 'approved' ? 'Verificado' : driver.verificationStatus === 'rejected' ? 'Rejeitado' : 'Em Análise'}
+                  {driver.verificationStatus === 'approved' ? 'Verificado' : driver.verificationStatus === 'rejected' ? 'Bloqueado' : 'Em Análise'}
                 </Badge>
               </div>
             </div>
@@ -177,6 +178,54 @@ const DriverDetailModal = ({ driver, onClose }: { driver: Driver, onClose: () =>
                 <span className="text-2xl font-bold text-blue-900">R$ {driver.earningsToday?.toFixed(2) || '0.00'}</span>
               </div>
             </div>
+
+            {/* Stats & Reviews Section */}
+            <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+              <h3 className="font-bold text-gray-800 border-b border-gray-100 pb-2 mb-3 flex items-center justify-between">
+                <span>Desempenho e Avaliações</span>
+                <span className="text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-500 font-normal">Histórico Geral</span>
+              </h3>
+
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="bg-green-50 p-3 rounded-lg text-center border border-green-100">
+                  <span className="block text-xl font-bold text-green-700">{rides.filter(r => r.driver?.id === driver.id && r.status === 'completed').length}</span>
+                  <span className="text-xs text-green-600 uppercase font-bold">Concluídas</span>
+                </div>
+                <div className="bg-red-50 p-3 rounded-lg text-center border border-red-100">
+                  <span className="block text-xl font-bold text-red-700">{rides.filter(r => r.driver?.id === driver.id && r.status === 'cancelled').length}</span>
+                  <span className="text-xs text-red-600 uppercase font-bold">Canceladas</span>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-xs font-bold text-gray-500 uppercase mb-2">Avaliações e Comentários</h4>
+                <div className="space-y-3 max-h-40 overflow-y-auto pr-1 custom-scrollbar">
+                  {rides
+                    .filter(r => r.driver?.id === driver.id && (r.rating || r.review))
+                    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+                    .map(r => (
+                      <div key={r.id} className="bg-gray-50 p-2.5 rounded border border-gray-100 text-sm">
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-1">
+                            {[...Array(5)].map((_, i) => (
+                              <Star key={i} size={12} className={`${i < (r.rating || 0) ? 'text-yellow-400 fill-current' : 'text-gray-300'}`} />
+                            ))}
+                          </div>
+                          <span className="text-[10px] text-gray-400">{new Date(r.createdAt).toLocaleDateString()}</span>
+                        </div>
+                        {r.review ? (
+                          <p className="text-gray-600 italic">"{r.review}"</p>
+                        ) : (
+                          <p className="text-gray-400 italic text-xs">Sem comentário escrito</p>
+                        )}
+                      </div>
+                    ))}
+                  {rides.filter(r => r.driver?.id === driver.id && (r.rating || r.review)).length === 0 && (
+                    <p className="text-center text-gray-400 text-xs py-2">Nenhuma avaliação recente.</p>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Right Column: CNH & Actions */}
@@ -197,12 +246,18 @@ const DriverDetailModal = ({ driver, onClose }: { driver: Driver, onClose: () =>
                   <p className="text-xs mt-1">O motorista não enviou o documento.</p>
                 </div>
               )}
-              {driver.cnhUrl && (
-                <a href={driver.cnhUrl} target="_blank" rel="noreferrer" className="absolute bottom-4 right-4 bg-gray-900 text-white text-xs px-3 py-1 rounded-full flex items-center gap-1 hover:bg-black transition">
-                  <Download size={12} /> Baixar/Ampliar
-                </a>
-              )}
             </div>
+            {driver.cnhUrl && (
+              <a
+                href={driver.cnhUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="w-full bg-gray-900 text-white py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-black transition font-bold text-sm shadow-lg"
+              >
+                <Download size={16} />
+                {driver.cnhUrl.toLowerCase().endsWith('.pdf') ? 'BAIXAR CNH (PDF)' : 'AMPLIAR / BAIXAR IMAGEM'}
+              </a>
+            )}
 
             {/* Action Buttons */}
             <div className="pt-4 border-t border-gray-100 flex flex-col gap-3">
@@ -230,8 +285,8 @@ const DriverDetailModal = ({ driver, onClose }: { driver: Driver, onClose: () =>
               <div className="pt-2 mt-2 border-t border-gray-100">
                 <Button
                   fullWidth
-                  variant="danger"
-                  className="bg-red-50 text-red-600 border border-red-200 hover:bg-red-100"
+                  variant="outline"
+                  className="bg-white border-2 border-red-500 text-red-600 hover:bg-red-50 font-bold shadow-sm"
                   onClick={() => {
                     setConfirmModal({
                       isOpen: true,
@@ -276,8 +331,10 @@ const DriverDetailModal = ({ driver, onClose }: { driver: Driver, onClose: () =>
 const UserDetailModal = ({ user, onClose, rides }: { user: User; onClose: () => void; rides: RideRequest[] }) => {
   const [activeTab, setActiveTab] = useState<'info' | 'history' | 'wallet'>('info');
   const [amountToAdd, setAmountToAdd] = useState('');
-  const [isBlocked, setIsBlocked] = useState(user.isBlocked || false);
+  const [isBlocked, setIsBlocked] = useState(user.isBlocked || user.status === 'blocked' || false);
   const [walletBalance, setWalletBalance] = useState(user.walletBalance || 0);
+  const [loadingCredit, setLoadingCredit] = useState(false);
+  const [expandedRideId, setExpandedRideId] = useState<string | null>(null);
   const [confirmModal, setConfirmModal] = useState({
     isOpen: false,
     title: '',
@@ -286,73 +343,102 @@ const UserDetailModal = ({ user, onClose, rides }: { user: User; onClose: () => 
     variant: 'danger' as 'danger' | 'info' | 'success'
   });
 
-  const userRides = rides.filter(r => r.passenger.id === user.id);
+  const userRides = rides.filter(r => r.passenger.id === user.id).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
-  const handleAddCredit = () => {
+  const handleAddCredit = async () => {
     const amount = parseFloat(amountToAdd);
-    if (amount > 0) {
+    if (!amount || amount <= 0) return alert("Digite um valor válido");
+
+    setLoadingCredit(true);
+    try {
       const newBalance = walletBalance + amount;
+
+      // Update in Firestore
+      await updateUserProfile(user.id, {
+        walletBalance: newBalance,
+        // Optional: Add transaction history if supported by schema
+      });
+
       setWalletBalance(newBalance);
       setAmountToAdd('');
-      // Using window.alert safely here if toast is not available in sub-modal or pass toast as prop?
-      // Since useToast is hook, we can use it here if UserDetailModal is inside Provider.
-      // But we haven't wrapped app yet.
-      // Assuming we will wrap everything, let's use toast.
-      // Wait, I can't use 'toast' here unless I call useToast().
-      // I need to add useToast hook to this component too.
-      alert(`R$ ${(amount || 0).toFixed(2)} adicionados com sucesso! Novo saldo: R$ ${(newBalance || 0).toFixed(2)}`);
+      alert(`R$ ${amount.toFixed(2)} adicionados com sucesso! Novo saldo: R$ ${newBalance.toFixed(2)}`);
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao adicionar créditos.");
+    } finally {
+      setLoadingCredit(false);
     }
   };
 
-  const handleToggleBlock = () => {
-    setIsBlocked(!isBlocked);
-    // TODO: Persist logic here
+  const handleToggleBlock = async () => {
+    const newStatus = !isBlocked;
+    setIsBlocked(newStatus);
+    try {
+      await updateUserProfile(user.id, {
+        status: newStatus ? 'blocked' : 'active',
+        isBlocked: newStatus
+      });
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao atualizar status do usuário.");
+      setIsBlocked(!newStatus); // Revert on error
+    }
+  };
+
+  const formatRideStatus = (status: string) => {
+    switch (status) {
+      case 'completed': return { label: 'Concluída', color: 'text-green-600 bg-green-50 border-green-200' };
+      case 'cancelled': return { label: 'Cancelada', color: 'text-red-600 bg-red-50 border-red-200' };
+      case 'in_progress': return { label: 'Em Andamento', color: 'text-blue-600 bg-blue-50 border-blue-200' };
+      default: return { label: 'Pendente', color: 'text-orange-600 bg-orange-50 border-orange-200' };
+    }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-fade-in backdrop-blur-sm">
-      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-xl animate-slide-up">
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 animate-fade-in backdrop-blur-sm">
+      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl animate-slide-up">
         {/* Header */}
         <div className="p-6 border-b border-gray-100 flex justify-between items-start bg-gray-50">
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-2xl font-bold overflow-hidden border-2 border-white shadow-sm">
+            <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-2xl font-bold overflow-hidden border-2 border-white shadow-sm ring-1 ring-gray-100">
               {user.avatar ? <img src={user.avatar} className="w-full h-full object-cover" /> : user.name.charAt(0)}
             </div>
             <div>
               <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
                 {user.name}
-                {isBlocked && <span className="bg-red-100 text-red-600 text-xs px-2 py-0.5 rounded-full">Bloqueado</span>}
+                {isBlocked && <span className="bg-red-100 text-red-600 text-xs px-2 py-0.5 rounded-full border border-red-200">Bloqueado</span>}
               </h2>
               <div className="flex items-center gap-3 text-sm text-gray-500 mt-1">
-                <span>ID: {user.id}</span>
+                <span className="font-mono bg-gray-200 px-1.5 py-0.5 rounded text-xs text-gray-600">ID: {user.id.substring(0, 8).toUpperCase()}</span>
                 <span className="flex items-center gap-1"><Star size={12} className="text-yellow-400 fill-current" /> {user.rating}</span>
+                <span className="px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-xs font-medium">{user.type === 'passenger' ? 'Passageiro' : 'Corporativo'}</span>
               </div>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full transition">
+          <button onClick={onClose} className="p-2 hover:bg-white hover:shadow-md rounded-full transition text-gray-400 hover:text-gray-600">
             <X size={20} />
           </button>
         </div>
 
         {/* Navigation */}
-        <div className="flex border-b border-gray-100 px-6">
-          <button onClick={() => setActiveTab('info')} className={`pb-3 pt-4 px-2 text-sm font-medium border-b-2 transition ${activeTab === 'info' ? 'border-orange-500 text-orange-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Dados Pessoais</button>
-          <button onClick={() => setActiveTab('wallet')} className={`pb-3 pt-4 px-2 text-sm font-medium border-b-2 transition ${activeTab === 'wallet' ? 'border-orange-500 text-orange-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Carteira Digital</button>
-          <button onClick={() => setActiveTab('history')} className={`pb-3 pt-4 px-2 text-sm font-medium border-b-2 transition ${activeTab === 'history' ? 'border-orange-500 text-orange-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Histórico de Corridas</button>
+        <div className="flex border-b border-gray-100 px-6 bg-white shrink-0">
+          <button onClick={() => setActiveTab('info')} className={`pb-3 pt-4 px-2 text-sm font-bold border-b-2 transition ${activeTab === 'info' ? 'border-orange-500 text-orange-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Dados Pessoais</button>
+          <button onClick={() => setActiveTab('wallet')} className={`pb-3 pt-4 px-2 text-sm font-bold border-b-2 transition ${activeTab === 'wallet' ? 'border-orange-500 text-orange-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Carteira Digital</button>
+          <button onClick={() => setActiveTab('history')} className={`pb-3 pt-4 px-2 text-sm font-bold border-b-2 transition ${activeTab === 'history' ? 'border-orange-500 text-orange-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Histórico de Corridas</button>
         </div>
 
         {/* Content */}
-        <div className="p-6 overflow-y-auto flex-1">
+        <div className="p-6 overflow-y-auto flex-1 bg-white">
           {activeTab === 'info' && (
-            <div className="space-y-4">
+            <div className="space-y-4 animate-fade-in">
               {/* Avatar Upload */}
-              <div className="flex justify-center mb-4">
+              <div className="flex justify-center mb-6">
                 <div className="relative group cursor-pointer" onClick={() => (document.getElementById('avatar-upload') as HTMLInputElement)?.click()}>
-                  <div className="w-24 h-24 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-3xl font-bold overflow-hidden border-4 border-white shadow-md">
+                  <div className="w-24 h-24 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-3xl font-bold overflow-hidden border-4 border-white shadow-lg ring-1 ring-gray-100">
                     {user.avatar ? <img src={user.avatar} className="w-full h-full object-cover" /> : user.name.charAt(0)}
                   </div>
                   <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <span className="text-white text-xs font-bold">Alterar</span>
+                    <span className="text-white text-xs font-bold flex items-center gap-1"><Edit2 size={12} /> Alterar</span>
                   </div>
                   <input type="file" id="avatar-upload" className="hidden" accept="image/*" onChange={() => alert('Funcionalidade de upload simulada!')} />
                 </div>
@@ -360,28 +446,28 @@ const UserDetailModal = ({ user, onClose, rides }: { user: User; onClose: () => 
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo</label>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nome Completo</label>
                   <Input value={user.name} readOnly className="bg-gray-50" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Telefone</label>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Telefone</label>
                   <Input value={user.phone} readOnly className="bg-gray-50" />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">E-mail</label>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">E-mail</label>
                   <Input value={user.email || 'Não informado'} readOnly className="bg-gray-50" />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Endereço</label>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Endereço Principal</label>
                   <Input value={user.address || 'Não informado'} readOnly className="bg-gray-50" />
                 </div>
               </div>
 
-              <div className="pt-6 border-t border-gray-100">
-                <h4 className="text-sm font-bold text-gray-900 mb-3">Gerenciamento de Acesso</h4>
+              <div className="pt-6 mt-2 border-t border-gray-100">
+                <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2"><Shield size={16} /> Gerenciamento de Acesso</h4>
                 <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-200">
                   <div>
-                    <p className="font-medium text-gray-900">{isBlocked ? 'Usuário Bloqueado' : 'Usuário Ativo'}</p>
+                    <p className={`font-bold ${isBlocked ? 'text-red-600' : 'text-green-600'}`}>{isBlocked ? 'Usuário Bloqueado' : 'Usuário Ativo'}</p>
                     <p className="text-xs text-gray-500">{isBlocked ? 'Este usuário não pode solicitar corridas.' : 'Acesso total liberado.'}</p>
                   </div>
                   <button
@@ -402,7 +488,7 @@ const UserDetailModal = ({ user, onClose, rides }: { user: User; onClose: () => 
                     setConfirmModal({
                       isOpen: true,
                       title: 'Excluir Passageiro',
-                      message: 'Tem certeza que deseja EXCLUIR este passageiro? Esta ação apagará permanentemente os dados.',
+                      message: 'Tem certeza que deseja EXCLUIR este passageiro? Esta ação apagará permanentemente os dados e não poderá ser desfeita.',
                       variant: 'danger',
                       onConfirm: async () => {
                         try {
@@ -410,7 +496,7 @@ const UserDetailModal = ({ user, onClose, rides }: { user: User; onClose: () => 
                           await deleteUser(user.id);
                           setConfirmModal(prev => ({ ...prev, isOpen: false }));
                           onClose();
-                          window.location.reload(); // Refresh table
+                          window.location.reload();
                         } catch (e) {
                           alert('Erro ao excluir usuário');
                         }
@@ -418,68 +504,167 @@ const UserDetailModal = ({ user, onClose, rides }: { user: User; onClose: () => 
                     });
                   }}
                 >
-                  Excluir Passageiro
+                  <Trash2 size={16} className="mr-2" /> Excluir Conta
                 </Button>
                 <Button
-                  variant="success"
+                  variant="secondary"
                   className="flex-1"
                   onClick={() => {
                     alert('Alterações salvas com sucesso!');
                     onClose();
                   }}
                 >
-                  Salvar Alterações
+                  <CheckCircle size={16} className="mr-2" /> Salvar Alterações
                 </Button>
               </div>
             </div>
           )}
 
           {activeTab === 'wallet' && (
-            <div className="space-y-6">
-              <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-xl p-6 text-white shadow-lg">
-                <p className="text-gray-400 text-sm mb-1">Saldo em Carteira</p>
-                <h3 className="text-3xl font-bold">R$ {(walletBalance || 0).toFixed(2)}</h3>
+            <div className="space-y-6 animate-fade-in">
+              <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-6 text-white shadow-xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-4 opacity-10">
+                  <DollarSign size={120} />
+                </div>
+                <p className="text-gray-400 text-sm mb-1 font-medium">Saldo atual em Carteira</p>
+                <h3 className="text-4xl font-bold tracking-tight">R$ {(walletBalance || 0).toFixed(2)}</h3>
+                <div className="mt-4 flex items-center gap-2 text-xs text-gray-400 bg-white/10 w-fit px-3 py-1 rounded-full backdrop-blur-sm">
+                  <Shield size={12} className="text-green-400" />
+                  <span>Transações seguras e criptografadas</span>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Adicionar Crédito</label>
-                <div className="flex gap-2">
+              <div className="bg-orange-50 rounded-xl p-6 border border-orange-100">
+                <label className="block text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
+                  <Plus size={16} className="text-orange-600" /> Adicionar Crédito Manualmente
+                </label>
+                <div className="flex gap-3">
                   <Input
                     type="number"
                     placeholder="0.00"
                     value={amountToAdd}
                     onChange={e => setAmountToAdd(e.target.value)}
                     icon={<span className="text-gray-500 font-bold">R$</span>}
+                    className="text-lg font-bold"
                   />
-                  <Button onClick={handleAddCredit}><Plus size={18} /> Adicionar</Button>
+                  <Button onClick={handleAddCredit} isLoading={loadingCredit} className="px-6 whitespace-nowrap bg-orange-600 hover:bg-orange-700">
+                    Adicionar
+                  </Button>
                 </div>
-                <p className="text-xs text-gray-500 mt-2">O valor será creditado imediatamente na conta do usuário.</p>
+                <p className="text-xs text-gray-500 mt-2 ml-1">
+                  * O valor será creditado imediatamente na conta do usuário e ficará disponível para corridas.
+                </p>
               </div>
             </div>
           )}
 
           {activeTab === 'history' && (
-            <div className="space-y-3">
+            <div className="space-y-3 animate-fade-in">
               {userRides.length > 0 ? (
-                userRides.map(ride => (
-                  <div key={ride.id} className="border border-gray-100 rounded-lg p-3 flex justify-between items-center bg-gray-50">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className={`w-2 h-2 rounded-full ${ride.status === 'completed' ? 'bg-green-500' : 'bg-gray-300'}`}></span>
-                        <span className="font-medium text-sm text-gray-900">{new Date(ride.createdAt).toLocaleDateString()}</span>
+                userRides.map(ride => {
+                  const statusInfo = formatRideStatus(ride.status);
+                  const isExpanded = expandedRideId === ride.id;
+
+                  return (
+                    <div
+                      key={ride.id}
+                      className={`border rounded-xl transition-all cursor-pointer ${isExpanded ? 'border-orange-200 bg-orange-50/30' : 'border-gray-100 bg-white hover:bg-gray-50'}`}
+                      onClick={() => setExpandedRideId(isExpanded ? null : ride.id)}
+                    >
+                      <div className="p-4 flex justify-between items-start">
+                        <div className="flex items-start gap-3">
+                          <div className={`mt-1 p-2 rounded-lg ${ride.serviceType?.includes('DELIVERY') ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'}`}>
+                            {ride.serviceType?.includes('DELIVERY') ? <Package size={20} /> : <Bike size={20} />}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="font-bold text-gray-900">
+                                {ride.serviceType?.includes('DELIVERY') ? 'Entrega' : 'Corrida Moto'}
+                              </span>
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold border uppercase ${statusInfo.color}`}>
+                                {statusInfo.label}
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-500 flex items-center gap-1 mb-1">
+                              <Calendar size={12} /> {new Date(ride.createdAt).toLocaleDateString()} às {new Date(ride.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                            <p className="text-sm text-gray-600 truncate max-w-[200px] md:max-w-xs font-medium">
+                              {ride.destination}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className="block font-bold text-gray-900 text-lg">R$ {(ride.price || 0).toFixed(2)}</span>
+                          <span className="text-xs text-gray-400">{ride.distance}km</span>
+                        </div>
                       </div>
-                      <p className="text-xs text-gray-500 truncate w-48">{ride.origin} ➔ {ride.destination}</p>
+
+                      {/* Expandable Details */}
+                      {isExpanded && (
+                        <div className="px-4 pb-4 pt-0 text-sm border-t border-gray-100/50 mt-2">
+                          <div className="pt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-3">
+                              <div>
+                                <span className="text-xs font-bold text-gray-400 uppercase block mb-1">Origem (Retirada)</span>
+                                <p className="text-gray-800 bg-white p-2 rounded border border-gray-100 text-xs">{ride.origin}</p>
+                              </div>
+                              <div>
+                                <span className="text-xs font-bold text-gray-400 uppercase block mb-1">Destino (Entrega)</span>
+                                <p className="text-gray-800 bg-white p-2 rounded border border-gray-100 text-xs">{ride.destination}</p>
+                              </div>
+                              <div>
+                                <span className="text-xs font-bold text-gray-400 uppercase block mb-1">Método de Pagamento</span>
+                                <p className="text-gray-800 flex items-center gap-2">
+                                  {ride.paymentMethod === 'pix' ? <Zap size={14} className="text-green-500" /> : <DollarSign size={14} className="text-gray-500" />}
+                                  <span className="capitalize">{ride.paymentMethod || 'Dinheiro'}</span>
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="space-y-3">
+                              {ride.driver ? (
+                                <div>
+                                  <span className="text-xs font-bold text-gray-400 uppercase block mb-1">Motorista Responsável</span>
+                                  <div className="flex items-center gap-2 bg-white p-2 rounded border border-gray-100">
+                                    <img src={ride.driver.avatar} className="w-8 h-8 rounded-full" />
+                                    <div>
+                                      <p className="font-bold text-xs">{ride.driver.name}</p>
+                                      <p className="text-[10px] text-gray-500">{ride.driver.plate} • {ride.driver.vehicle}</p>
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div>
+                                  <span className="text-xs font-bold text-gray-400 uppercase block mb-1">Motorista</span>
+                                  <p className="text-gray-400 text-xs italic">Não atribuído</p>
+                                </div>
+                              )}
+
+                              {ride.deliveryDetails && (
+                                <div className="bg-blue-50 p-2 rounded border border-blue-100">
+                                  <span className="text-xs font-bold text-blue-800 uppercase block mb-1 flex items-center gap-1"><Package size={12} /> Dados da Entrega</span>
+                                  <p className="text-xs text-blue-900"><span className="font-bold">Contato:</span> {ride.deliveryDetails.contactName}</p>
+                                  <p className="text-xs text-blue-900"><span className="font-bold">Telefone:</span> {ride.deliveryDetails.contactPhone}</p>
+                                  {ride.deliveryDetails.instructions && (
+                                    <p className="text-xs text-blue-800 mt-1 italic">"{ride.deliveryDetails.instructions}"</p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="mt-4 pt-3 border-t border-gray-100 flex justify-end">
+                            <span className="text-[10px] text-gray-400 font-mono">ID Corrida: {ride.id}</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <div className="text-right">
-                      <span className="block font-bold text-gray-900">R$ {(ride.price || 0).toFixed(2)}</span>
-                      <span className="text-[10px] uppercase font-bold text-gray-400">{ride.status}</span>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               ) : (
-                <div className="text-center py-8 text-gray-400">
-                  <History size={32} className="mx-auto mb-2 opacity-50" />
-                  <p>Nenhuma corrida registrada.</p>
+                <div className="text-center py-12 text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                  <History size={48} className="mx-auto mb-2 opacity-30" />
+                  <p>Nenhuma corrida registrada para este usuário.</p>
                 </div>
               )}
             </div>
@@ -800,6 +985,7 @@ const CompanyFormModal = ({ company, onClose, onSave, onDelete, onNotify }: {
       }
     }
   };
+
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1231,6 +1417,58 @@ const AdminDashboardContent = ({ onLogout }: { onLogout?: () => void }) => {
     }
   };
 
+
+  const handleUserBulkAction = async (action: 'block' | 'delete') => {
+    let title = 'Confirmação em Massa';
+    let message = '';
+    let variant: 'success' | 'danger' | 'info' = 'danger';
+
+    if (action === 'block') {
+      title = 'Bloquear Usuários';
+      message = `Confirma BLOQUEAR ${selectedUserIds.length} passageiros?`;
+      variant = 'danger';
+    } else if (action === 'delete') {
+      title = 'Excluir Usuários';
+      message = `ATENÇÃO: Confirma a EXCLUSÃO PERMANENTE de ${selectedUserIds.length} passageiros? Esta ação apagará todos os dados e não pode ser desfeita.`;
+      variant = 'danger';
+    }
+
+    setConfirmModal({
+      isOpen: true,
+      title,
+      message,
+      variant,
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        setLoading(true);
+        try {
+          if (action === 'delete') {
+            const { deleteUser } = await import('../services/user');
+            const promises = selectedUserIds.map(id => deleteUser(id));
+            await Promise.all(promises);
+            handleNotify('Sucesso', "Passageiros excluídos permanentemente!", 'success');
+          } else {
+            const promises = selectedUserIds.map(id => updateUserProfile(id, {
+              status: 'blocked'
+            }));
+            await Promise.all(promises);
+            handleNotify('Sucesso', "Passageiros bloqueados!", 'success');
+          }
+          setSelectedUserIds([]);
+          // loadData is accessible here? yes, defined in AdminDashboardContent scope (should be)
+          // Wait, loadData definition check? It's likely defined later, which is fine in function scope due to hoisting or if defined before call.
+          // IF loadData is defined AFTER this function in the same component, it's fine.
+          loadData();
+        } catch (e) {
+          console.error(e);
+          handleNotify('Erro', "Erro ao processar ação em massa", 'danger');
+        } finally {
+          setLoading(false);
+        }
+      }
+    });
+  };
+
   // Real-time Companies Subscription & Notifications
   const companiesRef = React.useRef(companies);
   useEffect(() => {
@@ -1263,6 +1501,7 @@ const AdminDashboardContent = ({ onLogout }: { onLogout?: () => void }) => {
   const [filterStatus, setFilterStatus] = useState<'all' | 'online' | 'offline' | 'busy' | 'pending'>('all');
   const [sortField, setSortField] = useState<'name' | 'rating'>('name');
   const [selectedDriverIds, setSelectedDriverIds] = useState<string[]>([]);
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [viewDriver, setViewDriver] = useState<Driver | null>(null);
   const [viewUser, setViewUser] = useState<User | null>(null);
   const [showAddDriver, setShowAddDriver] = useState(false);
@@ -1761,22 +2000,47 @@ const AdminDashboardContent = ({ onLogout }: { onLogout?: () => void }) => {
     }
   };
 
-  const handleBulkAction = async (action: 'approve' | 'block') => {
+  const handleBulkAction = async (action: 'approve' | 'block' | 'delete') => {
+    let title = 'Confirmação em Massa';
+    let message = '';
+    let variant: 'success' | 'danger' | 'info' = 'danger';
+
+    if (action === 'approve') {
+      title = 'Aprovar Motoristas';
+      message = `Confirma APROVAR ${selectedDriverIds.length} motoristas?`;
+      variant = 'success';
+    } else if (action === 'block') {
+      title = 'Bloquear Motoristas';
+      message = `Confirma BLOQUEAR ${selectedDriverIds.length} motoristas?`;
+      variant = 'danger';
+    } else if (action === 'delete') {
+      title = 'Excluir Motoristas';
+      message = `ATENÇÃO: Confirma a EXCLUSÃO PERMANENTE de ${selectedDriverIds.length} motoristas? Esta ação apagará todos os dados e não pode ser desfeita.`;
+      variant = 'danger';
+    }
+
     setConfirmModal({
       isOpen: true,
-      title: 'Confirmação em Massa',
-      message: `Confirma ${action === 'approve' ? 'APROVAR' : 'BLOQUEAR'} ${selectedDriverIds.length} motoristas?`,
-      variant: action === 'approve' ? 'success' : 'danger',
+      title,
+      message,
+      variant,
       onConfirm: async () => {
         setConfirmModal(prev => ({ ...prev, isOpen: false }));
         setLoading(true);
         try {
-          const promises = selectedDriverIds.map(id => updateUserProfile(id, {
-            verificationStatus: action === 'approve' ? 'approved' : 'rejected',
-            status: action === 'approve' ? 'offline' : 'offline'
-          }));
-          await Promise.all(promises);
-          handleNotify('Sucesso', "Ação em massa concluída com sucesso!", 'success');
+          if (action === 'delete') {
+            const { deleteUser } = await import('../services/user');
+            const promises = selectedDriverIds.map(id => deleteUser(id));
+            await Promise.all(promises);
+            handleNotify('Sucesso', "Motoristas excluídos permanentemente!", 'success');
+          } else {
+            const promises = selectedDriverIds.map(id => updateUserProfile(id, {
+              verificationStatus: action === 'approve' ? 'approved' : 'rejected',
+              status: action === 'approve' ? 'offline' : 'offline'
+            }));
+            await Promise.all(promises);
+            handleNotify('Sucesso', "Ação em massa concluída com sucesso!", 'success');
+          }
           setSelectedDriverIds([]);
           loadData();
         } catch (e) {
@@ -2636,11 +2900,11 @@ const AdminDashboardContent = ({ onLogout }: { onLogout?: () => void }) => {
           <SidebarItem id="users" icon={<Users size={20} />} label="Passageiros" />
           <SidebarItem id="occurrences" icon={<AlertTriangle size={20} />} label="Ocorrências" badge={notifications.filter(n => !n.read && (n.type === 'ride_issue' || n.type === 'feedback')).length} />
           <SidebarItem id="reports" icon={<FileText size={20} />} label="Relatórios" />
+          <SidebarItem id="campaigns" icon={<Megaphone size={20} />} label="Campanhas" badge="NOVO" />
 
           <p className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-3 mt-6 px-2">Configuração</p>
           <SidebarItem id="settings" icon={<Settings size={20} />} label="Ajustes" />
           <SidebarItem id="integrations" icon={<Zap size={20} />} label="Integrações" />
-          <SidebarItem id="campaigns" icon={<Megaphone size={20} />} label="Campanhas" badge="NOVO" />
         </div>
 
         <div className="p-4 border-t border-gray-800">
@@ -3117,6 +3381,7 @@ const AdminDashboardContent = ({ onLogout }: { onLogout?: () => void }) => {
                   drivers={safeData.drivers}
                   isLoading={loadingLocation && !adminLocation}
                   initialCenter={adminLocation || undefined}
+                  layoutTrigger={showDriverPanel}
                 />
               </div>
 
@@ -3139,7 +3404,7 @@ const AdminDashboardContent = ({ onLogout }: { onLogout?: () => void }) => {
                             <p className="font-medium text-gray-900 text-sm truncate">{driver.name}</p>
                             {driver.vehicle?.toLowerCase().includes('bike') || driver.vehicle?.toLowerCase().includes('bicicleta')
                               ? <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18.5" cy="17.5" r="3.5" /><circle cx="5.5" cy="17.5" r="3.5" /><circle cx="15" cy="5" r="1" /><path d="M12 17.5V14l-3-3 4-3 2 3h2" /></svg>
-                              : <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#ea580c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 17.5c0 1.4 1.1 2.5 2.5 2.5s2.5-1.1 2.5-2.5-1.1-2.5-2.5-2.5-2.5 1.1-2.5 2.5z" /><path d="M15 17.5c0 1.4 1.1 2.5 2.5 2.5s2.5-1.1 2.5-2.5-1.1-2.5-2.5-2.5-2.5 1.1-2.5 2.5z" /><path d="M6.5 15l2-5h6l2.5 5" /><path d="M15 10l-2-4h4l1 2" /><path d="M9.5 10l1.5 5" /></svg>
+                              : <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" stroke="#ea580c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 17.5c0 1.4 1.1 2.5 2.5 2.5s2.5-1.1 2.5-2.5-1.1-2.5-2.5-2.5-2.5 1.1-2.5 2.5z" /><path d="M15 17.5c0 1.4 1.1 2.5 2.5 2.5s2.5-1.1 2.5-2.5-1.1-2.5-2.5-2.5-2.5 1.1-2.5 2.5z" /><path d="M6.5 15l2-5h6l2.5 5" /><path d="M15 10l-2-4h4l1 2" /><path d="M9.5 10l1.5 5" /></svg>
                             }
                           </div>
                           <p className="text-xs text-gray-400">{driver.vehicle || 'Moto'} • ⭐ {driver.rating}</p>
@@ -3274,6 +3539,13 @@ const AdminDashboardContent = ({ onLogout }: { onLogout?: () => void }) => {
                     <span className="text-sm text-orange-800 font-bold ml-2">{selectedDriverIds.length} selecionados</span>
                     <div className="flex gap-2">
                       <Button variant="outline" className="py-1 px-3 h-8 text-xs bg-white" onClick={() => setSelectedDriverIds([])}>Cancelar</Button>
+                      <Button
+                        variant="outline"
+                        className="py-1 px-3 h-8 text-xs bg-white !border-red-200 !text-red-600 hover:!bg-red-50"
+                        onClick={() => handleBulkAction('delete')}
+                      >
+                        <Trash2 size={14} className="mr-1" /> Excluir
+                      </Button>
                       <Button variant="danger" className="py-1 px-3 h-8 text-xs" onClick={() => handleBulkAction('block')}>Bloquear</Button>
                       <Button variant="success" className="py-1 px-3 h-8 text-xs" onClick={() => handleBulkAction('approve')}>Aprovar</Button>
                     </div>
@@ -3308,2077 +3580,226 @@ const AdminDashboardContent = ({ onLogout }: { onLogout?: () => void }) => {
                         >
                           Avaliação <ArrowUpDown size={14} />
                         </th>
-                        <th className="p-4 whitespace-nowrap">Ganhos Hoje</th>
+                        <th className="p-4 whitespace-nowrap">Corridas</th>
+                        <th className="p-4 whitespace-nowrap text-center">Ganhos Hoje</th>
                         <th className="p-4 whitespace-nowrap">Placa / Veículo</th>
                         <th className="p-4 text-right whitespace-nowrap">Ações</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {filteredDrivers.map((driver) => (
-                        <tr key={driver.id} className={`hover:bg-gray-50 transition group cursor-pointer ${selectedDriverIds.includes(driver.id) ? 'bg-orange-50' : ''}`} onClick={() => setViewDriver(driver)}>
-                          <td className="p-4" onClick={(e) => { e.stopPropagation(); handleSelectDriver(driver.id); }}>
-                            {selectedDriverIds.includes(driver.id) ? <CheckSquare size={20} className="text-orange-500" /> : <Square size={20} className="text-gray-300" />}
-                          </td>
-                          <td className="p-4 whitespace-nowrap">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 font-bold shrink-0 overflow-hidden">
-                                {driver.avatar ? <img src={driver.avatar} className="w-full h-full object-cover" /> : driver.name.charAt(0)}
-                              </div>
-                              <div>
-                                <p className="font-semibold text-gray-900">{driver.name}</p>
-                                <p className="text-xs text-gray-400">ID: {driver.id.substring(0, 8)}...</p>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="p-4 whitespace-nowrap">
-                            <Badge color={driver.status === 'online' ? 'green' : driver.status === 'busy' ? 'orange' : 'gray'}>
-                              {driver.status === 'online' ? 'Online' : driver.status === 'busy' ? 'Em corrida' : 'Offline'}
-                            </Badge>
-                          </td>
-                          <td className="p-4 whitespace-nowrap text-center">
-                            <Badge color={driver.verificationStatus === 'approved' ? 'green' : driver.verificationStatus === 'rejected' ? 'red' : 'orange'}>
-                              {driver.verificationStatus === 'approved' ? 'Verificado' : driver.verificationStatus === 'rejected' ? 'Rejeitado' : 'Pendente'}
-                            </Badge>
-                          </td>
-                          <td className="p-4 whitespace-nowrap">
-                            <div className="flex items-center gap-1 font-medium text-gray-900">
-                              <span className="text-yellow-500">★</span> {driver.rating}
-                            </div>
-                          </td>
-                          <td className="p-4 font-mono text-gray-900 whitespace-nowrap">R$ {driver.earningsToday?.toFixed(2) || '0.00'}</td>
-                          <td className="p-4 whitespace-nowrap text-xs">
-                            <span className="font-bold block">{driver.plate}</span>
-                            <span className="text-gray-400">{driver.vehicle}</span>
-                          </td>
-                          <td className="p-4 text-right whitespace-nowrap">
-                            <button className="p-2 hover:bg-gray-200 rounded-full transition text-gray-400 hover:text-gray-600">
-                              <MoreVertical size={18} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {filteredDrivers.length === 0 && (
-                    <div className="p-8 text-center text-gray-500">
-                      Nenhum piloto encontrado com os filtros atuais.
-                    </div>
-                  )}
-                </div>
-              </Card>
-            </div>
-          ) : activeTab === 'occurrences' ? (
-            <div className="max-w-5xl mx-auto animate-fade-in space-y-6">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-800">Ocorrências</h2>
-                  <p className="text-gray-500 text-sm">Gerencie problemas, reclamações e incidentes</p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <span className="text-sm text-gray-500">
-                    {notifications.filter(n => !n.read && (n.type === 'ride_issue' || n.type === 'payment' || n.type === 'feedback')).length} pendentes
-                  </span>
-                  <Button onClick={() => setShowNewOccurrenceModal(true)} className="flex items-center gap-2">
-                    <Plus size={18} />
-                    Nova Ocorrência
-                  </Button>
-                </div>
-              </div>
+                      {filteredDrivers.map((driver) => {
+                        const completed = safeData?.recentRides?.filter(r => r.driver?.id === driver.id && r.status === 'completed').length || 0;
+                        const cancelled = safeData?.recentRides?.filter(r => r.driver?.id === driver.id && r.status === 'cancelled').length || 0;
 
-              {/* Stats Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <Card className="p-4 border-l-4 border-red-500">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
-                      <AlertTriangle size={20} className="text-red-600" />
-                    </div>
-                    <div>
-                      <p className="text-2xl font-bold text-gray-900">{notifications.filter(n => n.type === 'ride_issue' && n.status !== 'resolved').length}</p>
-                      <p className="text-xs text-gray-500">Problemas em Corridas</p>
-                    </div>
-                  </div>
-                </Card>
-                <Card className="p-4 border-l-4 border-yellow-500">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center">
-                      <Star size={20} className="text-yellow-600" />
-                    </div>
-                    <div>
-                      <p className="text-2xl font-bold text-gray-900">{notifications.filter(n => n.type === 'feedback' && n.status !== 'resolved').length}</p>
-                      <p className="text-xs text-gray-500">Avaliações Baixas</p>
-                    </div>
-                  </div>
-                </Card>
-                <Card className="p-4 border-l-4 border-green-500">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                      <DollarSign size={20} className="text-green-600" />
-                    </div>
-                    <div>
-                      <p className="text-2xl font-bold text-gray-900">{notifications.filter(n => n.type === 'payment' && n.status !== 'resolved').length}</p>
-                      <p className="text-xs text-gray-500">Pagamentos Pendentes</p>
-                    </div>
-                  </div>
-                </Card>
-                <Card className="p-4 border-l-4 border-blue-500">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                      <LifeBuoy size={20} className="text-blue-600" />
-                    </div>
-                    <div>
-                      <p className="text-2xl font-bold text-gray-900">{notifications.filter(n => n.type === 'support_request' && !n.read).length}</p>
-                      <p className="text-xs text-gray-500">Solicitações de Suporte</p>
-                    </div>
-                  </div>
-                </Card>
-              </div>
-
-              {/* Filters */}
-              <Card className="p-4">
-                <div className="flex flex-wrap gap-4 items-end">
-                  <div className="flex-1 min-w-[200px]">
-                    <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Buscar</label>
-                    <div className="relative">
-                      <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
-                      <input
-                        type="text"
-                        value={occurrenceSearch}
-                        onChange={(e) => setOccurrenceSearch(e.target.value)}
-                        placeholder="Buscar por título, mensagem, motorista..."
-                        className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Tipo</label>
-                    <select
-                      value={occurrenceTypeFilter}
-                      onChange={(e) => setOccurrenceTypeFilter(e.target.value as any)}
-                      className="px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500 cursor-pointer"
-                    >
-                      <option value="all">Todos os tipos</option>
-                      <option value="ride_issue">Problemas em Corridas</option>
-                      <option value="payment">Pagamentos</option>
-                      <option value="feedback">Avaliações</option>
-                      <option value="support_request">Suporte (Pilotos)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Status</label>
-                    <select
-                      value={occurrenceStatusFilter}
-                      onChange={(e) => setOccurrenceStatusFilter(e.target.value as any)}
-                      className="px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500 cursor-pointer"
-                    >
-                      <option value="all">Todos</option>
-                      <option value="pending">Pendentes</option>
-                      <option value="resolved">Resolvidos</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">De</label>
-                    <input
-                      type="date"
-                      value={occurrenceDateFrom}
-                      onChange={(e) => setOccurrenceDateFrom(e.target.value)}
-                      className="px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Até</label>
-                    <input
-                      type="date"
-                      value={occurrenceDateTo}
-                      onChange={(e) => setOccurrenceDateTo(e.target.value)}
-                      className="px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-500"
-                    />
-                  </div>
-                  <button
-                    onClick={() => { setOccurrenceSearch(''); setOccurrenceTypeFilter('all'); setOccurrenceStatusFilter('all'); setOccurrenceDateFrom(''); setOccurrenceDateTo(''); }}
-                    className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition"
-                  >
-                    Limpar filtros
-                  </button>
-                </div>
-              </Card>
-
-              {/* Occurrences List */}
-              <Card className="overflow-hidden">
-                <div className="p-4 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
-                  <h3 className="font-bold text-gray-800">
-                    Lista de Ocorrências
-                    <span className="font-normal text-gray-500 text-sm ml-2">
-                      ({notifications
-                        .filter(n => (n.type === 'ride_issue' || n.type === 'payment' || n.type === 'feedback' || n.type === 'support_request'))
-                        .filter(n => occurrenceTypeFilter === 'all' || n.type === occurrenceTypeFilter)
-                        .filter(n => occurrenceStatusFilter === 'all' || (occurrenceStatusFilter === 'pending' ? !n.read : n.read))
-                        .filter(n => !occurrenceSearch || n.title.toLowerCase().includes(occurrenceSearch.toLowerCase()) || n.message.toLowerCase().includes(occurrenceSearch.toLowerCase()) || (n as any).driver?.toLowerCase().includes(occurrenceSearch.toLowerCase()))
-                        .filter(n => !occurrenceDateFrom || n.time >= new Date(occurrenceDateFrom))
-                        .filter(n => !occurrenceDateTo || n.time <= new Date(occurrenceDateTo + 'T23:59:59'))
-                        .length} resultados)
-                    </span>
-                  </h3>
-                  <div className="flex gap-2 items-center">
-                    {selectedNotificationIds.length > 0 && (
-                      <div className="flex gap-2 animate-fade-in mr-2">
-                        <Button
-                          variant="danger"
-                          onClick={async () => {
-                            if (!confirm('Excluir itens selecionados?')) return;
-                            for (const id of selectedNotificationIds) await deleteOccurrence(id);
-                            setNotifications(prev => prev.filter(n => !selectedNotificationIds.includes(n.id)));
-                            setSelectedNotificationIds([]);
-                          }}
-                          className="py-1 px-2 text-xs h-8"
-                        >
-                          Excluir ({selectedNotificationIds.length})
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={async () => {
-                            const updates = selectedNotificationIds.map(id => updateOccurrence(id, { read: true }));
-                            await Promise.all(updates);
-                            setNotifications(prev => prev.map(n => selectedNotificationIds.includes(n.id) ? { ...n, read: true } : n));
-                            setSelectedNotificationIds([]);
-                          }}
-                          className="py-1 px-2 text-xs h-8 bg-white"
-                        >
-                          Marcar Lidos
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={() => setSelectedNotificationIds([])}
-                          className="py-1 px-2 text-xs h-8 bg-white text-gray-500"
-                        >
-                          Cancelar
-                        </Button>
-                      </div>
-                    )}
-                    <button
-                      onClick={() => {
-                        const filteredIds = notifications
-                          .filter(n => (n.type === 'ride_issue' || n.type === 'payment' || n.type === 'feedback' || n.type === 'support_request'))
-                          .filter(n => occurrenceTypeFilter === 'all' || n.type === occurrenceTypeFilter)
-                          .filter(n => occurrenceStatusFilter === 'all' || (occurrenceStatusFilter === 'pending' ? n.status !== 'resolved' : n.status === 'resolved'))
-                          .map(n => n.id);
-
-                        if (selectedNotificationIds.length === filteredIds.length) {
-                          setSelectedNotificationIds([]);
-                        } else {
-                          setSelectedNotificationIds(filteredIds);
-                        }
-                      }}
-                      className="text-xs text-orange-600 hover:underline font-medium"
-                    >
-                      {selectedNotificationIds.length > 0 ? 'Deselecionar Todos' : 'Selecionar Todos'}
-                    </button>
-                  </div>
-                </div>
-                <div className="divide-y divide-gray-100 max-h-[500px] overflow-y-auto">
-                  {notifications
-                    .filter(n => n.type === 'ride_issue' || n.type === 'payment' || n.type === 'feedback' || n.type === 'support_request')
-                    .filter(n => occurrenceTypeFilter === 'all' || n.type === occurrenceTypeFilter)
-                    .filter(n => occurrenceStatusFilter === 'all' || (occurrenceStatusFilter === 'pending' ? !n.read : n.read))
-                    .filter(n => !occurrenceSearch || n.title.toLowerCase().includes(occurrenceSearch.toLowerCase()) || n.message.toLowerCase().includes(occurrenceSearch.toLowerCase()) || (n as any).driver?.toLowerCase().includes(occurrenceSearch.toLowerCase()))
-                    .filter(n => !occurrenceDateFrom || n.time >= new Date(occurrenceDateFrom))
-                    .filter(n => !occurrenceDateTo || n.time <= new Date(occurrenceDateTo + 'T23:59:59'))
-                    .sort((a, b) => b.time.getTime() - a.time.getTime())
-                    .map(occurrence => (
-                      <div
-                        key={occurrence.id}
-                        className={`p-4 hover:bg-gray-50 transition ${!occurrence.read ? 'bg-orange-50/30' : ''}`}
-                      >
-                        <div className="flex gap-4">
-                          <div className="pt-1">
-                            <input
-                              type="checkbox"
-                              checked={selectedNotificationIds.includes(occurrence.id)}
-                              onChange={(e) => {
-                                e.stopPropagation();
-                                if (selectedNotificationIds.includes(occurrence.id)) {
-                                  setSelectedNotificationIds(prev => prev.filter(id => id !== occurrence.id));
-                                } else {
-                                  setSelectedNotificationIds(prev => [...prev, occurrence.id]);
-                                }
-                              }}
-                              className="rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer"
-                            />
-                          </div>
-                          <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${occurrence.type === 'ride_issue' ? 'bg-red-100 text-red-600' :
-                            occurrence.type === 'payment' ? 'bg-green-100 text-green-600' :
-                              occurrence.type === 'support_request' ? 'bg-blue-100 text-blue-600' :
-                                'bg-yellow-100 text-yellow-600'
-                            }`}>
-                            {occurrence.type === 'ride_issue' && <AlertTriangle size={24} />}
-                            {occurrence.type === 'payment' && <DollarSign size={24} />}
-                            {occurrence.type === 'feedback' && <Star size={24} />}
-                            {occurrence.type === 'support_request' && <LifeBuoy size={24} />}
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex items-start justify-between gap-4">
-                              <div>
-                                <div className="flex items-center gap-2 mb-1">
-                                  <h4 className={`font-bold ${!occurrence.read ? 'text-gray-900' : 'text-gray-700'}`}>
-                                    {occurrence.title}
-                                  </h4>
-                                  {occurrence.status === 'resolved' ? (
-                                    <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-bold rounded-full border border-green-200">
-                                      RESOLVIDO
-                                    </span>
-                                  ) : (
-                                    <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-[10px] font-bold rounded-full border border-orange-200">
-                                      PENDENTE
-                                    </span>
-                                  )}
+                        return (
+                          <tr key={driver.id} className={`hover:bg-gray-50 transition group cursor-pointer ${selectedDriverIds.includes(driver.id) ? 'bg-orange-50' : ''}`} onClick={() => setViewDriver(driver)}>
+                            <td className="p-4" onClick={(e) => { e.stopPropagation(); handleSelectDriver(driver.id); }}>
+                              {selectedDriverIds.includes(driver.id) ? <CheckSquare size={20} className="text-orange-500" /> : <Square size={20} className="text-gray-300" />}
+                            </td>
+                            <td className="p-4 whitespace-nowrap">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 font-bold shrink-0 overflow-hidden">
+                                  {driver.avatar ? <img src={driver.avatar} className="w-full h-full object-cover" /> : driver.name.charAt(0)}
                                 </div>
-                                <p className="text-sm text-gray-600 mb-2">{occurrence.message}</p>
-
-                                {/* Support Ticket Extra Context */}
-                                {(occurrence as any).originalTicket?.rideDetails && (
-                                  <div className="mb-2 p-2 bg-gray-50 rounded border border-gray-100 text-xs">
-                                    <p className="font-bold text-gray-700 flex items-center gap-1">
-                                      <History size={12} /> Contexto da Corrida
-                                    </p>
-                                    <div className="mt-1 grid grid-cols-2 gap-x-2 gap-y-1">
-                                      <span className="text-gray-500">Destino:</span> <span className="font-medium text-gray-800 truncate">{(occurrence as any).originalTicket.rideDetails.destination}</span>
-                                      <span className="text-gray-500">Data:</span> <span className="font-medium text-gray-800">{new Date((occurrence as any).originalTicket.rideDetails.date).toLocaleDateString('pt-BR')}</span>
-                                      <span className="text-gray-500">Valor:</span> <span className="font-medium text-green-600">R$ {((occurrence as any).originalTicket?.rideDetails?.price || 0).toFixed(2)}</span>
-                                    </div>
-                                  </div>
-                                )}
-
-                                {(occurrence as any).originalTicket?.attachments && (occurrence as any).originalTicket.attachments.length > 0 && (
-                                  <div className="mb-2 flex gap-2">
-                                    {(occurrence as any).originalTicket.attachments.map((url: string, idx: number) => (
-                                      <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="block w-12 h-12 rounded overflow-hidden border border-gray-200 hover:opacity-80 transition">
-                                        <img src={url} alt="Anexo" className="w-full h-full object-cover" />
-                                      </a>
-                                    ))}
-                                  </div>
-                                )}
-
-                                <p className="text-xs text-gray-400">
-                                  {occurrence.time.toLocaleDateString('pt-BR')} às {occurrence.time.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                                </p>
+                                <div>
+                                  <p className="font-semibold text-gray-900">{driver.name}</p>
+                                  <p className="text-xs text-gray-400">ID: {driver.id.substring(0, 8)}...</p>
+                                </div>
                               </div>
-                              <div className="flex gap-2 flex-shrink-0">
-                                <button
-                                  onClick={async (e) => {
+                            </td>
+                            <td className="p-4 whitespace-nowrap">
+                              <Badge color={driver.status === 'online' ? 'green' : driver.status === 'busy' ? 'orange' : 'gray'}>
+                                {driver.status === 'online' ? 'Online' : driver.status === 'busy' ? 'Em corrida' : 'Offline'}
+                              </Badge>
+                            </td>
+                            <td className="p-4 whitespace-nowrap text-center">
+                              <Badge color={driver.verificationStatus === 'approved' ? 'green' : driver.verificationStatus === 'rejected' ? 'red' : 'orange'}>
+                                {driver.verificationStatus === 'approved' ? 'Verificado' : driver.verificationStatus === 'rejected' ? 'Bloqueado' : 'Pendente'}
+                              </Badge>
+                            </td>
+                            <td className="p-4 whitespace-nowrap">
+                              <div className="flex items-center gap-1 font-medium text-gray-900">
+                                <span className="text-yellow-500">★</span> {driver.rating}
+                              </div>
+                            </td>
+                            <td className="p-4 whitespace-nowrap">
+                              <div className="flex flex-col">
+                                <span className="font-bold text-gray-900 text-lg">{driver.totalRides || 0}</span>
+                              </div>
+                            </td>
+                            <td className="p-4 font-mono text-gray-900 whitespace-nowrap text-center">R$ {driver.earningsToday?.toFixed(2) || '0.00'}</td>
+                            <td className="p-4 whitespace-nowrap text-xs">
+                              <span className="font-bold block uppercase">{driver.plate || '---'}</span>
+                              <span className="text-gray-400">{driver.vehicle || 'Não inf.'}</span>
+                            </td>
+                            <td className="p-4 text-right whitespace-nowrap">
+                              <div className="flex items-center justify-end gap-2">
+                                <button className="p-2 text-gray-500 hover:bg-gray-100 rounded-full transition" title="Ver Detalhes" onClick={(e) => { e.stopPropagation(); setViewDriver(driver); }}>
+                                  <Eye size={16} />
+                                </button>
+                                <button className={`p-2 rounded-full transition ${driver.verificationStatus === 'rejected' ? 'text-green-600 hover:bg-green-50' : 'text-gray-500 hover:text-red-600 hover:bg-red-50'}`}
+                                  title={driver.verificationStatus === 'rejected' ? 'Desbloquear' : 'Bloquear'}
+                                  onClick={(e) => {
                                     e.stopPropagation();
-                                    const newRead = !occurrence.read;
-                                    setNotifications(prev => prev.map(n => n.id === occurrence.id ? { ...n, read: newRead } : n));
-                                    await updateOccurrence(occurrence.id, { read: newRead });
-                                  }}
-                                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition ${occurrence.read ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
-                                >
-                                  {occurrence.read ? 'Marcar como não lida' : 'Marcar como lida'}
-                                </button>
-                                <button
-                                  className="px-3 py-1.5 text-xs font-medium bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-lg transition"
-                                  onClick={() => setSelectedOccurrence(occurrence)}
-                                >
-                                  Ver Detalhes
+                                    const isBlocked = driver.verificationStatus === 'rejected';
+                                    setConfirmModal({
+                                      isOpen: true,
+                                      title: isBlocked ? 'Desbloquear Motorista' : 'Bloquear Motorista',
+                                      message: isBlocked
+                                        ? `Deseja desbloquear e aprovar o acesso de ${driver.name}?`
+                                        : `Tem certeza que deseja bloquear o acesso de ${driver.name}?`,
+                                      variant: isBlocked ? 'success' : 'danger',
+                                      onConfirm: async () => {
+                                        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                                        setLoading(true);
+                                        try {
+                                          // If blocked, set to approved/offline (so they can login). If approved, set to rejected/offline.
+                                          await updateUserProfile(driver.id, {
+                                            verificationStatus: isBlocked ? 'approved' : 'rejected',
+                                            status: 'offline'
+                                          });
+                                          handleNotify('Sucesso', `Motorista ${isBlocked ? 'desbloqueado' : 'bloqueado'} com sucesso!`, 'success');
+                                        } catch (error) {
+                                          console.error(error);
+                                          handleNotify('Erro', `Falha ao ${isBlocked ? 'desbloquear' : 'bloquear'} motorista.`, 'danger');
+                                        } finally {
+                                          setLoading(false);
+                                        }
+                                      }
+                                    });
+                                  }}>
+                                  {driver.verificationStatus === 'approved' ? <Unlock size={16} /> : <Lock size={16} />}
                                 </button>
                               </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  {notifications
-                    .filter(n => n.type === 'ride_issue' || n.type === 'payment' || n.type === 'feedback')
-                    .filter(n => occurrenceTypeFilter === 'all' || n.type === occurrenceTypeFilter)
-                    .filter(n => occurrenceStatusFilter === 'all' || (occurrenceStatusFilter === 'pending' ? !n.read : n.read))
-                    .filter(n => !occurrenceSearch || n.title.toLowerCase().includes(occurrenceSearch.toLowerCase()) || n.message.toLowerCase().includes(occurrenceSearch.toLowerCase()))
-                    .filter(n => !occurrenceDateFrom || n.time >= new Date(occurrenceDateFrom))
-                    .filter(n => !occurrenceDateTo || n.time <= new Date(occurrenceDateTo + 'T23:59:59'))
-                    .length === 0 && (
-                      <div className="p-12 text-center text-gray-400">
-                        <AlertTriangle size={48} className="mx-auto mb-4 opacity-30" />
-                        <p className="font-medium">Nenhuma ocorrência encontrada</p>
-                        <p className="text-sm">Tente ajustar os filtros</p>
-                      </div>
-                    )}
-                </div>
-              </Card>
-            </div>
-          ) : activeTab === 'companies' ? (
-            <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
-              {viewingCompanyId ? (
-                <CompanyDashboard
-                  companyId={viewingCompanyId}
-                  onBack={() => setViewingCompanyId(null)}
-                  isAdminView={true}
-                />
-              ) : (
-                <>
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <h2 className="text-2xl font-bold text-gray-800">Gestão de Empresas Parceiras</h2>
-                      <p className="text-gray-500 text-sm">Gerencie clientes corporativos e limites de crédito.</p>
-                    </div>
-                    <Button onClick={() => setShowAddCompanyModal(true)}>
-                      <Plus size={18} className="mr-2" />
-                      Nova Empresa
-                    </Button>
-                  </div>
-
-                  {/* Stats Cards */}
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <Card className="p-4 border-l-4 border-blue-500">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                          <Building2 size={20} className="text-blue-600" />
-                        </div>
-                        <div>
-                          <p className="text-2xl font-bold text-gray-900">{companies.length}</p>
-                          <p className="text-xs text-gray-500">Total de Empresas</p>
-                        </div>
-                      </div>
-                    </Card>
-                    <Card className="p-4 border-l-4 border-green-500">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                          <CheckCircle size={20} className="text-green-600" />
-                        </div>
-                        <div>
-                          <p className="text-2xl font-bold text-gray-900">{companies.filter(c => c.status === 'active').length}</p>
-                          <p className="text-xs text-gray-500">Ativas</p>
-                        </div>
-                      </div>
-                    </Card>
-                    <Card className="p-4 border-l-4 border-yellow-500">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center">
-                          <Clock size={20} className="text-yellow-600" />
-                        </div>
-                        <div>
-                          <p className="text-2xl font-bold text-gray-900">{companies.filter(c => c.status === 'pending').length}</p>
-                          <p className="text-xs text-gray-500">Aguardando Análise</p>
-                        </div>
-                      </div>
-                    </Card>
-                    <Card className="p-4 border-l-4 border-red-500">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
-                          <AlertCircle size={20} className="text-red-600" />
-                        </div>
-                        <div>
-                          <p className="text-2xl font-bold text-gray-900">{companies.filter(c => c.status === 'blocked').length}</p>
-                          <p className="text-xs text-gray-500">Bloqueadas</p>
-                        </div>
-                      </div>
-                    </Card>
-                  </div>
-
-                  {/* Table */}
-                  <Card className="p-0 overflow-hidden">
-                    <table className="w-full text-left text-sm text-gray-600">
-                      <thead className="bg-gray-50 text-gray-900 border-b border-gray-100">
-                        <tr>
-                          <th className="p-4">Empresa</th>
-                          <th className="p-4">CNPJ</th>
-                          <th className="p-4">Status</th>
-                          <th className="p-4 text-right">Crédito Utilizado</th>
-                          <th className="p-4 text-right">Ações</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {companies.length === 0 ? (
-                          <tr>
-                            <td colSpan={5} className="p-12 text-center text-gray-400">
-                              <Building2 size={48} className="mx-auto mb-4 opacity-30" />
-                              <p className="font-medium mb-2">Nenhuma empresa cadastrada.</p>
-                              <p className="text-xs">Utilize o botão "Nova Empresa" acima para adicionar.</p>
                             </td>
                           </tr>
-                        ) : (
-                          companies.map(company => (
-                            <tr key={company.id} className="hover:bg-gray-50">
-                              <td className="p-4 font-medium text-gray-900 flex items-center gap-3">
-                                <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center overflow-hidden">
-                                  {company.logoUrl ? <img src={company.logoUrl} className="w-full h-full object-cover" /> : <Building2 size={16} />}
-                                </div>
-                                <div>
-                                  <p>{company.name}</p>
-                                  <p className="text-xs text-gray-400">{company.email}</p>
-                                </div>
-                              </td>
-                              <td className="p-4">{company.cnpj}</td>
-                              <td className="p-4">
-                                <Badge color={company.status === 'active' ? 'green' : company.status === 'blocked' ? 'red' : 'yellow'}>
-                                  {company.status === 'active' ? 'Ativo' : company.status === 'blocked' ? 'Bloqueado' : 'Pendente'}
-                                </Badge>
-                              </td>
-                              <td className="p-4 text-right">
-                                <div className="flex flex-col items-end">
-                                  <span className="font-bold">R$ {company.usedCredit?.toFixed(2) || '0.00'}</span>
-                                  <span className="text-xs text-gray-400">de R$ {company.creditLimit?.toFixed(2) || '0.00'}</span>
-                                </div>
-                              </td>
-                              <td className="p-4 text-right flex justify-end gap-2">
-                                <Button variant="outline" className="text-xs h-8 px-2" onClick={() => setViewingCompanyId(company.id)}>
-                                  Painel
-                                </Button>
-                                <Button variant="secondary" className="text-xs h-8 px-2" onClick={() => { setEditingCompany(company); setShowCompanyModal(true); }}>
-                                  <Edit2 size={14} />
-                                </Button>
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </Card>
-                </>
-              )}
-            </div>
-          ) : activeTab === 'reports' ? (
-            <div className="max-w-4xl mx-auto animate-fade-in">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold text-gray-800">Relatórios & Exportação</h2>
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-6">
-                <Card className="p-6">
-                  <div className="bg-orange-100 w-12 h-12 rounded-lg flex items-center justify-center mb-4">
-                    <FileText className="text-orange-600" />
-                  </div>
-                  <h3 className="text-lg font-bold mb-2">Relatório de Corridas</h3>
-                  <p className="text-gray-500 text-sm mb-6">Exporte o histórico completo de corridas, incluindo valores, rotas e status em formato CSV para análise em planilhas.</p>
-                  <Button onClick={() => handleExport('csv')} className="w-full flex items-center justify-center gap-2">
-                    <Download size={18} /> Baixar CSV
-                  </Button>
-                </Card>
-
-                <Card className="p-6">
-                  <div className="bg-blue-100 w-12 h-12 rounded-lg flex items-center justify-center mb-4">
-                    <TrendingUp className="text-blue-600" />
-                  </div>
-                  <h3 className="text-lg font-bold mb-2">Fechamento Financeiro</h3>
-                  <p className="text-gray-500 text-sm mb-6">Gere um PDF com o resumo financeiro, comissões de motoristas e faturamento da plataforma.</p>
-                  <Button variant="secondary" onClick={() => handleExport('pdf')} className="w-full flex items-center justify-center gap-2">
-                    <FileText size={18} /> Gerar PDF
-                  </Button>
-                </Card>
-              </div>
-            </div>
-          ) : activeTab === 'consultation' ? (
-            <div className="max-w-5xl mx-auto space-y-8 animate-fade-in pb-20">
-              <div className="text-center space-y-2">
-                <h2 className="text-3xl font-bold text-gray-800">Nova Simulação</h2>
-                <p className="text-gray-500">Calcule rotas e valores para atendimento via telefone/WhatsApp</p>
-              </div>
-
-              {/* Progress Steps */}
-              <div className="flex justify-center mb-8">
-                <div className="flex items-center gap-4">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold transition-all ${simStep === 'type' ? 'bg-orange-500 text-white shadow-lg scale-110' : 'bg-green-500 text-white'
-                    }`}>1</div>
-                  <div className={`w-20 h-1 bg-gray-200 rounded-full overflow-hidden`}>
-                    <div className={`h-full bg-green-500 transition-all duration-500 ${simStep === 'type' ? 'w-0' : 'w-full'}`} />
-                  </div>
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold transition-all ${simStep === 'route' ? 'bg-orange-500 text-white shadow-lg scale-110' : simStep === 'result' ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'
-                    }`}>2</div>
-                  <div className={`w-20 h-1 bg-gray-200 rounded-full overflow-hidden`}>
-                    <div className={`h-full bg-green-500 transition-all duration-500 ${simStep === 'result' ? 'w-full' : 'w-0'}`} />
-                  </div>
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold transition-all ${simStep === 'result' ? 'bg-orange-500 text-white shadow-lg scale-110' : 'bg-gray-200 text-gray-500'
-                    }`}>3</div>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
-              </div>
-
-              {simStep === 'type' && (
-                <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto animate-slide-up">
-                  <button
-                    onClick={() => { setSimServiceType('ride'); setSimVehicle('moto'); setSimStep('route'); }}
-                    className="bg-white p-8 rounded-2xl shadow-sm hover:shadow-xl border-2 border-transparent hover:border-orange-500 transition-all group text-left"
-                  >
-                    <div className="bg-orange-100 w-16 h-16 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                      <Bike className="text-orange-600 w-8 h-8" />
-                    </div>
-                    <h3 className="text-xl font-bold text-gray-900 mb-2">Corrida (Mototaxi)</h3>
-                    <p className="text-gray-500">Transporte de passageiros com rapidez e segurança.</p>
-                  </button>
-
-                  <button
-                    onClick={() => { setSimServiceType('delivery'); setSimStep('route'); }}
-                    className="bg-white p-8 rounded-2xl shadow-sm hover:shadow-xl border-2 border-transparent hover:border-green-500 transition-all group text-left"
-                  >
-                    <div className="bg-green-100 w-16 h-16 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                      <Package className="text-green-600 w-8 h-8" />
-                    </div>
-                    <h3 className="text-xl font-bold text-gray-900 mb-2">Entrega (Delivery)</h3>
-                    <p className="text-gray-500">Envio de encomendas e documentos via Moto ou Bike.</p>
-                  </button>
-                </div>
-              )}
-
-              {simStep === 'route' && (
-                <div className="grid md:grid-cols-3 gap-6 animate-slide-up">
-                  <div className="md:col-span-2 space-y-6">
-                    <Card className="p-6">
-                      <div className="flex justify-between items-center mb-6">
-                        <h3 className="text-lg font-bold flex items-center gap-2">
-                          <MapPin className="text-orange-500" />
-                          Rota e Paradas
-                        </h3>
-                        {simServiceType === 'delivery' && (
-                          <div className="flex bg-gray-100 p-1 rounded-lg">
-                            <button
-                              onClick={() => setSimVehicle('moto')}
-                              className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${simVehicle === 'moto' ? 'bg-white shadow text-gray-900' : 'text-gray-500'}`}
-                            >Moto</button>
-                            <button
-                              onClick={() => setSimVehicle('bike')}
-                              className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${simVehicle === 'bike' ? 'bg-white shadow text-gray-900' : 'text-gray-500'}`}
-                            >Bike</button>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="space-y-4">
-                        {simWaypoints.map((wp, index) => (
-                          <div
-                            key={wp.id}
-                            className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${simDraggedIndex === index ? 'opacity-50 border-orange-300 bg-orange-50' : 'border-transparent hover:border-gray-200 bg-gray-50'
-                              }`}
-                            draggable
-                            onDragStart={() => handleDragStart(index)}
-                            onDragOver={(e) => handleDragOver(e, index)}
-                            onDragEnd={handleDragEnd}
-                          >
-                            <div className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600">
-                              <GripVertical size={20} />
-                            </div>
-
-                            <div className="flex-1">
-                              <div className="relative">
-                                <span className={`absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold px-1.5 py-0.5 rounded ${wp.type === 'origin' ? 'bg-green-100 text-green-700' :
-                                  wp.type === 'destination' ? 'bg-red-100 text-red-700' :
-                                    'bg-blue-100 text-blue-700'
-                                  }`}>
-                                  {wp.type === 'origin' ? 'A' : wp.type === 'destination' ? String.fromCharCode(65 + simWaypoints.length - 1) : String.fromCharCode(65 + index)}
-                                </span>
-                                <AddressInput
-                                  value={wp.address}
-                                  onChange={(val) => updateWaypointAddress(index, val)}
-                                  placeholder={wp.type === 'origin' ? "Endereço de retirada" : wp.type === 'destination' ? "Endereço de entrega" : "Parada intermediária"}
-                                  className="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none transition-all"
-                                />
-                              </div>
-                            </div>
-
-                            {wp.type === 'stop' && (
-                              <button onClick={() => removeStop(index)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition-colors">
-                                <X size={20} />
-                              </button>
-                            )}
-                          </div>
-                        ))}
-
-                        {simWaypoints.length < 5 && (
-                          <button
-                            onClick={addStop}
-                            className="w-full py-3 border-2 border-dashed border-gray-200 rounded-xl text-gray-500 font-bold hover:border-orange-500 hover:text-orange-500 hover:bg-orange-50 transition-all flex items-center justify-center gap-2"
-                          >
-                            <Plus size={20} /> Adicionar Parada
-                          </button>
-                        )}
-                      </div>
-                    </Card>
-                  </div>
-
-                  <div className="space-y-6">
-                    <Card className="p-6">
-                      <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                        <Users className="text-blue-500" />
-                        Cliente
-                      </h3>
-
-                      {simServiceType === 'delivery' && (
-                        <div className="flex gap-2 mb-4 p-1 bg-gray-100 rounded-lg">
-                          <button
-                            onClick={() => setSimDeliveryMode('sending')}
-                            className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${simDeliveryMode === 'sending' ? 'bg-white shadow text-gray-900' : 'text-gray-500'}`}
-                          >
-                            Enviar (Entrega)
-                          </button>
-                          <button
-                            onClick={() => setSimDeliveryMode('receiving')}
-                            className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${simDeliveryMode === 'receiving' ? 'bg-white shadow text-gray-900' : 'text-gray-500'}`}
-                          >
-                            Retirar (Coleta)
-                          </button>
-                        </div>
-                      )}
-
-                      <div className="space-y-4">
-                        <div className="relative">
-                          <div className="flex gap-2">
-                            <Input
-                              value={simUserSearch}
-                              onChange={(e) => {
-                                setSimUserSearch(e.target.value);
-                                // Always clear selected user when typing to ensure state consistency
-                                setSimUser(null);
-                              }}
-                              placeholder="Buscar por nome ou telefone..."
-                              className="flex-1"
-                            />
-                            <Button
-                              onClick={() => {
-                                setNewClientData(prev => ({ ...prev, name: simUserSearch }));
-                                setShowQuickRegister(true);
-                              }}
-                              className="px-4 bg-orange-500 hover:bg-orange-600 text-white"
-                            >
-                              <Plus />
-                            </Button>
-                          </div>
-
-                          {/* Dropdown Results */}
-                          {simUserSearch && !simUser && (
-                            <div className="absolute top-full left-0 w-full bg-white shadow-xl rounded-xl mt-1 border border-gray-100 max-h-48 overflow-y-auto z-50">
-                              {safeData.passengers && safeData.passengers
-                                .filter(u => u.name.toLowerCase().includes(simUserSearch.toLowerCase()) || u.phone.includes(simUserSearch))
-                                .map(user => (
-                                  <div
-                                    key={user.id}
-                                    onClick={() => {
-                                      setSimUser(user);
-                                      setSimUserSearch(user.name);
-                                    }}
-                                    className="p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-50 last:border-0"
-                                  >
-                                    <p className="font-bold text-sm text-gray-800">{user.name}</p>
-                                    <p className="text-xs text-gray-500">{user.phone}</p>
-                                  </div>
-                                ))}
-                              {safeData.passengers && safeData.passengers.filter(u => u.name.toLowerCase().includes(simUserSearch.toLowerCase()) || u.phone.includes(simUserSearch)).length === 0 && (
-                                <div className="p-3 text-center">
-                                  <p className="text-sm text-gray-400 mb-2">Nenhum cliente encontrado</p>
-                                  <button
-                                    onClick={() => {
-                                      setNewClientData(prev => ({ ...prev, name: simUserSearch }));
-                                      setShowQuickRegister(true);
-                                    }}
-                                    className="text-sm font-bold text-orange-500 hover:text-orange-600 hover:bg-orange-50 px-3 py-1.5 rounded-lg transition-colors w-full"
-                                  >
-                                    + Cadastrar "{simUserSearch}"
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Quick Register Modal */}
-                        {showQuickRegister && (
-                          <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
-                            <div className="bg-white rounded-2xl w-full max-w-md p-6 animate-slide-up shadow-2xl overflow-y-auto max-h-[90vh]">
-                              <h3 className="text-lg font-bold text-gray-900 mb-4">Novo Cliente Rápido</h3>
-
-                              <div className="space-y-4">
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo</label>
-                                  <Input
-                                    value={newClientData.name}
-                                    onChange={(e) => setNewClientData({ ...newClientData, name: e.target.value })}
-                                    placeholder="Nome do cliente"
-                                    autoFocus
-                                  />
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Telefone / WhatsApp</label>
-                                    <Input
-                                      value={newClientData.phone}
-                                      onChange={(e) => setNewClientData({ ...newClientData, phone: e.target.value })}
-                                      placeholder="(00) 00000-0000"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">CPF</label>
-                                    <Input
-                                      value={newClientData.cpf}
-                                      onChange={(e) => setNewClientData({ ...newClientData, cpf: e.target.value })}
-                                      placeholder="000.000.000-00"
-                                    />
-                                  </div>
-                                </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                                  <Input
-                                    value={newClientData.email}
-                                    onChange={(e) => setNewClientData({ ...newClientData, email: e.target.value })}
-                                    placeholder="email@exemplo.com"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">Endereço (Opcional)</label>
-                                  <AddressInput
-                                    value={newClientData.address}
-                                    onChange={(val) => setNewClientData({ ...newClientData, address: val })}
-                                    placeholder="Endereço residencial"
-                                  />
-                                </div>
-
-                                <div className="flex gap-3 pt-2">
-                                  <Button variant="outline" onClick={() => setShowQuickRegister(false)} className="flex-1">
-                                    Cancelar
-                                  </Button>
-                                  <Button
-                                    variant="primary"
-                                    disabled={!newClientData.name || !newClientData.phone}
-                                    onClick={() => {
-                                      // VALIDATION: Check duplicates
-                                      if (safeData.passengers) {
-                                        const exists = safeData.passengers.find(p =>
-                                          (newClientData.cpf && p.cpf === newClientData.cpf) ||
-                                          (newClientData.phone && p.phone === newClientData.phone) ||
-                                          (newClientData.email && p.email === newClientData.email)
-                                        );
-
-                                        if (exists) {
-                                          alert(`⚠️ Impossível cadastrar!\n\nJá existe um cliente com estes dados:\nNome: ${exists.name}\nCPF: ${exists.cpf || '-'}\nTel: ${exists.phone}`);
-                                          return;
-                                        }
-                                      }
-
-                                      // Save new client
-                                      const newClient = {
-                                        id: `u${Date.now()}`,
-                                        name: newClientData.name,
-                                        phone: newClientData.phone,
-                                        cpf: newClientData.cpf,
-                                        address: newClientData.address,
-                                        email: newClientData.email || `${newClientData.name.toLowerCase().replace(/\s/g, '.')}@email.com`,
-                                        type: 'passenger' as const,
-                                        rating: 5.0,
-                                        totalRides: 0,
-                                        createdAt: new Date(),
-                                        status: 'active' as const,
-                                        avatar: `https://ui-avatars.com/api/?name=${newClientData.name}&background=random`
-                                      };
-
-                                      // Update dashboardData state
-                                      if (dashboardData) {
-                                        setDashboardData({
-                                          ...dashboardData,
-                                          passengers: [...dashboardData.passengers, newClient]
-                                        });
-                                      }
-
-                                      // Select the new client
-                                      setSimUser(newClient);
-                                      setSimUserSearch(newClient.name);
-
-                                      // Reset and close
-                                      setNewClientData({ name: '', phone: '', cpf: '', email: '', address: '' });
-                                      setShowQuickRegister(false);
-                                    }}
-                                    className="flex-1"
-                                  >
-                                    Salvar
-                                  </Button>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        {simServiceType === 'delivery' && (
-                          <div className="pt-4 border-t border-gray-100 animate-slide-up">
-                            <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
-                              <Package size={16} className="text-orange-500" />
-                              {simDeliveryMode === 'sending' ? 'Dados do Destinatário' : 'Dados do Remetente'}
-                            </h4>
-                            <div className="grid grid-cols-2 gap-3">
-                              <Input
-                                value={simReceiverName}
-                                onChange={(e) => setSimReceiverName(e.target.value)}
-                                placeholder="Nome"
-                                icon={<Users size={14} className="text-gray-400" />}
-                              />
-                              <Input
-                                value={simReceiverPhone}
-                                onChange={(e) => setSimReceiverPhone(e.target.value)}
-                                placeholder="Telefone"
-                                icon={<Phone size={14} className="text-gray-400" />}
-                              />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </Card>
-
-                    <div className="flex gap-3">
-                      <Button variant="outline" onClick={() => setSimStep('type')} className="flex-1">
-                        Voltar
-                      </Button>
-                      <Button
-                        onClick={calculateRoute}
-                        disabled={simCalculating}
-                        className="flex-[2]"
-                        isLoading={simCalculating}
-                      >
-                        {simCalculating ? 'Calculando Rota...' : 'Calcular Valor'}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {simStep === 'result' && simResult && (
-                <div className="max-w-2xl mx-auto animate-fade-in">
-                  <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100">
-                    <div className="bg-gray-900 text-white p-8 text-center relative overflow-hidden">
-                      <div className="absolute top-0 left-0 w-full h-full opacity-10 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]"></div>
-                      <p className="text-gray-400 font-medium uppercase tracking-widest text-xs mb-2">Simulação Realizada</p>
-
-                      {simServiceType === 'ride' ? (
-                        <div className="mt-2">
-                          <h2 className="text-4xl font-black mb-1">R$ {(simResult?.price?.moto || 0).toFixed(2)}</h2>
-                          <p className="text-sm opacity-60">Mototaxi</p>
-                        </div>
-                      ) : (
-                        <div className="flex justify-center gap-4 mt-4 relative z-10 w-full">
-                          {/* Moto Option */}
-                          <div
-                            onClick={() => setSimVehicle('moto')}
-                            className={`flex-1 p-4 rounded-xl border-2 cursor-pointer transition-all ${simVehicle === 'moto' ? 'border-orange-500 bg-white/10' : 'border-gray-700 bg-gray-800/50 hover:bg-gray-800'}`}
-                          >
-                            <div className="flex flex-col items-center">
-                              <Bike size={24} className="text-orange-500 mb-2" />
-                              <h3 className="text-2xl font-bold">R$ {(simResult?.price?.moto || 0).toFixed(2)}</h3>
-                              <p className="text-xs text-gray-400">Entrega Moto</p>
-                            </div>
-                          </div>
-
-                          {/* Bike Option */}
-                          <div
-                            onClick={() => simResult.price.bike !== -1 && setSimVehicle('bike')}
-                            className={`flex-1 p-4 rounded-xl border-2 transition-all ${simResult.price.bike === -1 ? 'opacity-50 cursor-not-allowed border-gray-800' : simVehicle === 'bike' ? 'cursor-pointer border-green-500 bg-white/10' : 'cursor-pointer border-gray-700 bg-gray-800/50 hover:bg-gray-800'}`}
-                          >
-                            <div className="flex flex-col items-center">
-                              <Leaf size={24} className={simResult.price.bike === -1 ? "text-gray-500 mb-2" : "text-green-500 mb-2"} />
-                              {simResult.price.bike === -1 ? (
-                                <>
-                                  <h3 className="text-lg font-bold text-gray-400 mt-1">Indisponível</h3>
-                                  <p className="text-[10px] text-gray-500 mt-1">Distância excedida</p>
-                                </>
-                              ) : (
-                                <>
-                                  <h3 className="text-2xl font-bold">R$ {(simResult?.price?.bike || 0).toFixed(2)}</h3>
-                                  <p className="text-xs text-gray-400">Entrega Bike</p>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="p-8">
-                      <div className="grid grid-cols-3 gap-4 mb-8">
-                        <div className="text-center p-4 bg-gray-50 rounded-2xl">
-                          <Route className="w-6 h-6 text-orange-500 mx-auto mb-2" />
-                          <p className="text-xs text-gray-500 uppercase font-bold">Distância</p>
-                          <p className="text-xl font-bold text-gray-900">{simResult.distance} km</p>
-                        </div>
-                        <div className="text-center p-4 bg-gray-50 rounded-2xl">
-                          <Clock className="w-6 h-6 text-blue-500 mx-auto mb-2" />
-                          <p className="text-xs text-gray-500 uppercase font-bold">Tempo</p>
-                          <p className="text-xl font-bold text-gray-900">{simResult.duration} min</p>
-                        </div>
-                        <div className="text-center p-4 bg-gray-50 rounded-2xl">
-                          <MapPin className="w-6 h-6 text-green-500 mx-auto mb-2" />
-                          <p className="text-xs text-gray-500 uppercase font-bold">Paradas</p>
-                          <p className="text-xl font-bold text-gray-900">{simWaypoints.filter(wp => wp.address).length}</p>
-                        </div>
-                      </div>
-
-                      <div className="space-y-4 mb-8">
-                        {simWaypoints.filter(wp => wp.address).map((wp, i) => (
-                          <div key={wp.id} className="flex items-start gap-4">
-                            <div className="flex flex-col items-center gap-1 mt-1">
-                              <div className={`w-3 h-3 rounded-full ${i === 0 ? 'bg-green-500' : 'bg-gray-300'}`} />
-                              {i < simWaypoints.filter(w => w.address).length - 1 && <div className="w-0.5 h-6 bg-gray-200" />}
-                            </div>
-                            <div>
-                              <p className="text-xs text-gray-400 font-bold uppercase">
-                                {i === 0 ? 'Retirada' : i === simWaypoints.filter(w => w.address).length - 1 ? 'Entrega' : 'Parada'}
-                              </p>
-                              <p className="font-medium text-gray-800">{wp.address}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="flex gap-4">
-                        <Button
-                          variant="outline"
-                          onClick={() => setSimStep('route')}
-                          fullWidth
-                        >
-                          Editar Rota
-                        </Button>
-                        <Button
-                          variant="success"
-                          onClick={handleCreateOrder}
-                          disabled={!simUser}
-                          fullWidth
-                          className="py-4 text-lg"
-                        >
-                          {simUser ? 'Confirmar Pedido' : 'Selecione um Cliente'}
-                        </Button>
-                      </div>
-                      {!simUser && (
-                        <p className="text-center text-xs text-red-400 mt-2 font-medium">
-                          * Selecione um cliente na etapa anterior para finalizar
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="text-center mt-6">
-                    <button onClick={resetSimulation} className="text-gray-400 text-sm hover:text-gray-600 underline">
-                      Cancelar e iniciar nova simulação
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Active Calls Panel */}
-              {activeCalls.length > 0 && (
-                <div className="mt-12 animate-fade-in">
-                  <Card className="overflow-hidden">
-                    <div className="p-4 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
-                      <div>
-                        <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                          <Phone className="text-orange-500" size={20} />
-                          Chamadas Ativas
-                          <span className="bg-orange-500 text-white text-xs px-2 py-0.5 rounded-full">
-                            {activeCalls.filter(c => c.status === 'requesting' || c.status === 'in_progress').length}
-                          </span>
-                        </h3>
-                        <p className="text-sm text-gray-500">Gerencie pedidos manuais via telefone/WhatsApp</p>
-                      </div>
-                    </div>
-
-                    {/* Tabs */}
-                    <div className="flex border-b border-gray-100">
-                      {(['requesting', 'in_progress', 'completed', 'cancelled'] as const).map(tab => (
-                        <button
-                          key={tab}
-                          onClick={() => setCallsTab(tab)}
-                          className={`flex-1 py-3 text-sm font-bold transition-all relative ${callsTab === tab
-                            ? 'text-orange-600 bg-orange-50'
-                            : 'text-gray-500 hover:bg-gray-50'
-                            }`}
-                        >
-                          {tab === 'requesting' && '🔄 Solicitando'}
-                          {tab === 'in_progress' && '🚀 Em Andamento'}
-                          {tab === 'completed' && '✅ Concluído'}
-                          {tab === 'cancelled' && '❌ Cancelado'}
-                          <span className="ml-1 opacity-60">
-                            ({activeCalls.filter(c => c.status === tab).length})
-                          </span>
-                          {callsTab === tab && (
-                            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-orange-500" />
-                          )}
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Call Cards */}
-                    <div className="p-4 space-y-3 max-h-[400px] overflow-y-auto">
-                      {activeCalls.filter(c => c.status === callsTab).length === 0 ? (
-                        <p className="text-center text-gray-400 py-8">Nenhuma chamada nesta categoria</p>
-                      ) : (
-                        activeCalls.filter(c => c.status === callsTab).map(call => (
-                          <div
-                            key={call.id}
-                            className={`p-4 rounded-xl border-2 transition-all ${dispatchingCall === call.id
-                              ? 'border-orange-400 bg-orange-50 animate-pulse'
-                              : 'border-gray-100 bg-white hover:shadow-md'
-                              }`}
-                          >
-                            <div className="flex justify-between items-start mb-3">
-                              <div>
-                                <p className="font-mono text-xs text-gray-400">{call.protocol}</p>
-                                <h4 className="font-bold text-gray-900">{call.client.name}</h4>
-                                <p className="text-sm text-gray-500">{call.client.phone}</p>
-                              </div>
-                              <div className="text-right">
-                                <p className="text-xl font-bold text-green-600">R$ {(call.price || 0).toFixed(2)}</p>
-                                <p className="text-xs text-gray-400">{call.distance}km • {call.duration}min</p>
-                              </div>
-                            </div>
-
-                            <div className="text-sm space-y-1 mb-3">
-                              <p className="flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-green-500" />
-                                <span className="text-gray-600 truncate">{call.origin}</span>
-                              </p>
-                              <p className="flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-red-500" />
-                                <span className="text-gray-600 truncate">{call.destination}</span>
-                              </p>
-                            </div>
-
-                            {call.driver && (
-                              <div className="flex items-center gap-2 p-2 bg-blue-50 rounded-lg mb-3">
-                                <img src={call.driver.avatar} className="w-8 h-8 rounded-full" alt="" />
-                                <div>
-                                  <p className="text-sm font-bold text-gray-800">{call.driver.name}</p>
-                                  <p className="text-xs text-gray-500">Motorista atribuído</p>
-                                </div>
-                              </div>
-                            )}
-
-                            {dispatchingCall === call.id && (
-                              <div className="flex items-center justify-center gap-2 text-orange-600 py-2">
-                                <Loader2 className="animate-spin" size={16} />
-                                <span className="text-sm font-bold">Procurando motorista...</span>
-                              </div>
-                            )}
-
-                            {call.status === 'in_progress' && (
-                              <div className="flex gap-2">
-                                <Button
-                                  variant="outline"
-                                  onClick={() => setActiveCalls(prev => prev.map(c => c.id === call.id ? { ...c, status: 'completed', updatedAt: new Date() } : c))}
-                                  className="flex-1 py-2 text-sm"
-                                >
-                                  ✅ Concluir
-                                </Button>
-                                <Button
-                                  variant="danger"
-                                  onClick={() => setActiveCalls(prev => prev.map(c => c.id === call.id ? { ...c, status: 'cancelled', updatedAt: new Date() } : c))}
-                                  className="flex-1 py-2 text-sm"
-                                >
-                                  ❌ Cancelar
-                                </Button>
-                              </div>
-                            )}
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </Card>
-                </div>
-              )}
-            </div>
-          ) : activeTab === 'settings' ? (
-            <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-800">Ajustes da Plataforma</h2>
-                  <p className="text-gray-500 text-sm">Configure taxas, preços e dados da empresa</p>
-                </div>
-                <Button onClick={handleSaveSettings} isLoading={savingSettings}>Salvar Alterações</Button>
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-6">
-                {/* Visual Customization */}
-                <Card className="p-6 md:col-span-2 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex items-center gap-3 mb-6 border-b border-gray-100 pb-4">
-                    <div className="bg-purple-100 p-2 rounded-lg">
-                      <Palette className="text-purple-600" size={24} />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-bold text-gray-900">Personalização Visual</h3>
-                      <p className="text-sm text-gray-500">Personalize a identidade visual e tela de login do painel administrativo.</p>
-                    </div>
-                  </div>
-
-                  <div className="grid md:grid-cols-2 gap-8">
-                    {/* App Logo */}
-                    <div className="space-y-4">
-                      <label className="block text-sm font-medium text-gray-700">Logo da Aplicação</label>
-                      <div className="relative h-32 w-full rounded-xl overflow-hidden border-2 border-dashed border-gray-300 bg-gray-50 group hover:border-orange-500 transition-colors cursor-pointer flex items-center justify-center shadow-sm">
-                        {settings.visual?.appLogoUrl ? (
-                          <img src={settings.visual.appLogoUrl} className="h-full object-contain p-2" alt="App Logo" />
-                        ) : (
-                          <div className="text-center text-gray-400">
-                            <ImageIcon size={24} className="mx-auto mb-1 opacity-50" />
-                            <span className="text-xs">Sem logo</span>
-                          </div>
-                        )}
-                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white">
-                          <span className="text-xs font-bold">Alterar Logo</span>
-                        </div>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="absolute inset-0 opacity-0 cursor-pointer"
-                          onChange={async (e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              if (file.size > 1 * 1024 * 1024) {
-                                toast.error("O logo deve ter no máximo 1MB.", "Arquivo Muito Grande");
-                                return;
-                              }
-
-                              try {
-                                setSavingSettings(true);
-                                toast.info("Processando logo...", "Aguarde");
-
-                                // Compress image to Base64 (works even without Firebase Storage)
-                                const compressedBase64 = await new Promise<string>((resolve) => {
-                                  const reader = new FileReader();
-                                  reader.onload = (event) => {
-                                    const img = new Image();
-                                    img.onload = () => {
-                                      const canvas = document.createElement('canvas');
-                                      const ctx = canvas.getContext('2d');
-
-                                      // Limit size to reduce Base64
-                                      const MAX_SIZE = 400;
-                                      let width = img.width, height = img.height;
-                                      if (width > MAX_SIZE || height > MAX_SIZE) {
-                                        if (width > height) {
-                                          height = (height / width) * MAX_SIZE;
-                                          width = MAX_SIZE;
-                                        } else {
-                                          width = (width / height) * MAX_SIZE;
-                                          height = MAX_SIZE;
-                                        }
-                                      }
-
-                                      canvas.width = width;
-                                      canvas.height = height;
-                                      ctx?.drawImage(img, 0, 0, width, height);
-                                      resolve(canvas.toDataURL('image/jpeg', 0.7));
-                                    };
-                                    img.src = event.target?.result as string;
-                                  };
-                                  reader.readAsDataURL(file);
-                                });
-
-                                // Try Firebase Storage first, fallback to Base64
-                                let finalUrl = compressedBase64;
-
-                                try {
-                                  toast.info("Enviando para a nuvem...", "Aguarde");
-                                  finalUrl = await uploadFile(file, `settings/logo_${Date.now()}.png`);
-                                } catch (storageErr) {
-                                  console.warn("Firebase Storage falhou, usando imagem comprimida:", storageErr);
-                                }
-
-                                setSettings({
-                                  ...settings,
-                                  visual: {
-                                    ...(settings.visual || {}),
-                                    appLogoUrl: finalUrl
-                                  }
-                                });
-                                toast.success("Logo processado! Clique em 'Salvar Alterações'.", "Sucesso");
-                              } catch (err) {
-                                console.error("Erro ao processar logo:", err);
-                                toast.error("Erro ao processar imagem.", "Erro");
-                              } finally {
-                                setSavingSettings(false);
-                              }
-                            }
-                          }}
-                        />
-                      </div>
-                      <p className="text-xs text-gray-400">Usado no topo do login e menu lateral.</p>
-                    </div>
-
-                    {/* Login Background */}
-                    <div className="space-y-4">
-                      <label className="block text-sm font-medium text-gray-700">Imagem de Fundo do Login</label>
-                      <div className="relative aspect-video rounded-xl overflow-hidden border-2 border-dashed border-gray-300 bg-gray-50 group hover:border-orange-500 transition-colors cursor-pointer shadow-inner">
-                        {settings.visual?.loginBackgroundImage ? (
-                          <div className="relative w-full h-full group">
-                            <img src={settings.visual.loginBackgroundImage} className="w-full h-full object-cover" alt="Login Background" />
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (confirm('Remover imagem de fundo do login?')) {
-                                  setSettings({
-                                    ...settings,
-                                    visual: { ...(settings.visual || {}), loginBackgroundImage: '' }
-                                  });
-                                }
-                              }}
-                              className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 z-10"
-                              title="Remover Imagem"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="absolute inset-0 flex items-center justify-center text-gray-400">
-                            <div className="text-center">
-                              <ImageIcon size={32} className="mx-auto mb-2 opacity-50" />
-                              <span className="text-xs">Sem imagem selecionada</span>
-                            </div>
-                          </div>
-                        )}
-                        {!settings.visual?.loginBackgroundImage && (
-                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white">
-                            <ImageIcon size={32} className="mb-2" />
-                            <span className="text-sm font-bold">Clique para alterar imagem</span>
-                            <span className="text-xs opacity-75 mt-1">Trocar Plano de Fundo</span>
-                          </div>
-                        )}
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="absolute inset-0 opacity-0 cursor-pointer"
-                          onChange={async (e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              if (file.size > 1 * 1024 * 1024) {
-                                toast.error("A imagem deve ter no máximo 1MB.", "Arquivo Muito Grande");
-                                return;
-                              }
-
-                              try {
-                                setSavingSettings(true);
-                                toast.info("Processando imagem...", "Aguarde");
-
-                                // Compress image to Base64 (fallback for when Firebase Storage fails)
-                                const compressedBase64 = await new Promise<string>((resolve) => {
-                                  const reader = new FileReader();
-                                  reader.onload = (event) => {
-                                    const img = new Image();
-                                    img.onload = () => {
-                                      const canvas = document.createElement('canvas');
-                                      const ctx = canvas.getContext('2d');
-
-                                      // Limit size to reduce Base64 (keep reasonable for backgrounds)
-                                      const MAX_SIZE = 800;
-                                      let width = img.width, height = img.height;
-                                      if (width > MAX_SIZE || height > MAX_SIZE) {
-                                        if (width > height) {
-                                          height = (height / width) * MAX_SIZE;
-                                          width = MAX_SIZE;
-                                        } else {
-                                          width = (width / height) * MAX_SIZE;
-                                          height = MAX_SIZE;
-                                        }
-                                      }
-
-                                      canvas.width = width;
-                                      canvas.height = height;
-                                      ctx?.drawImage(img, 0, 0, width, height);
-                                      resolve(canvas.toDataURL('image/jpeg', 0.6));
-                                    };
-                                    img.src = event.target?.result as string;
-                                  };
-                                  reader.readAsDataURL(file);
-                                });
-
-                                // Try Firebase Storage first, fallback to Base64
-                                let finalUrl = compressedBase64;
-
-                                try {
-                                  toast.info("Enviando para a nuvem...", "Aguarde");
-                                  finalUrl = await uploadFile(file, `settings/login_bg_${Date.now()}.jpg`);
-                                } catch (storageErr) {
-                                  console.warn("Firebase Storage falhou, usando imagem comprimida:", storageErr);
-                                }
-
-                                setSettings({
-                                  ...settings,
-                                  visual: {
-                                    ...(settings.visual || {}),
-                                    loginBackgroundImage: finalUrl
-                                  }
-                                });
-                                toast.success("Imagem processada! Clique em 'Salvar Alterações'.", "Sucesso");
-                              } catch (err) {
-                                console.error("Erro ao processar:", err);
-                                toast.error("Erro ao processar imagem.", "Erro");
-                              } finally {
-                                setSavingSettings(false);
-                              }
-                            }
-                          }}
-                        />
-                      </div>
-                      <div className="flex justify-between items-center text-xs text-gray-500">
-                        <span>Recomendado: 1920x1080px (JPG/PNG)</span>
-                        {settings.visual?.loginBackgroundImage?.startsWith('data:') && (
-                          <span className="text-orange-600 font-bold">Nova imagem selecionada (não salva)</span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Mobile Background */}
-                    <div className="space-y-4">
-                      <label className="block text-sm font-medium text-gray-700">Imagem de Fundo (Mobile)</label>
-                      <div className="relative aspect-[9/16] w-1/2 mx-auto rounded-xl overflow-hidden border-2 border-dashed border-gray-300 bg-gray-50 group hover:border-orange-500 transition-colors cursor-pointer shadow-inner">
-                        {settings.visual?.mobileBackgroundImage ? (
-                          <div className="relative w-full h-full group">
-                            <img src={settings.visual.mobileBackgroundImage} className="w-full h-full object-cover" alt="Mobile Background" />
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (confirm('Remover imagem de fundo mobile?')) {
-                                  setSettings({
-                                    ...settings,
-                                    visual: { ...(settings.visual as any), mobileBackgroundImage: '' }
-                                  });
-                                }
-                              }}
-                              className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 z-10"
-                              title="Remover Imagem"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="absolute inset-0 flex items-center justify-center text-gray-400">
-                            <div className="text-center">
-                              <Smartphone size={32} className="mx-auto mb-2 opacity-50" />
-                              <span className="text-xs">Sem imagem mobile</span>
-                            </div>
-                          </div>
-                        )}
-                        {!settings.visual?.mobileBackgroundImage && (
-                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white">
-                            <Smartphone size={32} className="mb-2" />
-                            <span className="text-sm font-bold">Alterar Fundo Mobile</span>
-                          </div>
-                        )}
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="absolute inset-0 opacity-0 cursor-pointer"
-                          onChange={async (e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              if (file.size > 1 * 1024 * 1024) {
-                                toast.error("A imagem deve ter no máximo 1MB.", "Arquivo Muito Grande");
-                                return;
-                              }
-
-                              try {
-                                setSavingSettings(true);
-                                toast.info("Processando imagem mobile...", "Aguarde");
-
-                                // Compress image to Base64 (fallback for when Firebase Storage fails)
-                                const compressedBase64 = await new Promise<string>((resolve) => {
-                                  const reader = new FileReader();
-                                  reader.onload = (event) => {
-                                    const img = new Image();
-                                    img.onload = () => {
-                                      const canvas = document.createElement('canvas');
-                                      const ctx = canvas.getContext('2d');
-
-                                      // Limit size for mobile (portrait)
-                                      const MAX_WIDTH = 400;
-                                      const MAX_HEIGHT = 700;
-                                      let width = img.width, height = img.height;
-                                      if (width > MAX_WIDTH) {
-                                        height = (height / width) * MAX_WIDTH;
-                                        width = MAX_WIDTH;
-                                      }
-                                      if (height > MAX_HEIGHT) {
-                                        width = (width / height) * MAX_HEIGHT;
-                                        height = MAX_HEIGHT;
-                                      }
-
-                                      canvas.width = width;
-                                      canvas.height = height;
-                                      ctx?.drawImage(img, 0, 0, width, height);
-                                      resolve(canvas.toDataURL('image/jpeg', 0.6));
-                                    };
-                                    img.src = event.target?.result as string;
-                                  };
-                                  reader.readAsDataURL(file);
-                                });
-
-                                // Try Firebase Storage first, fallback to Base64
-                                let finalUrl = compressedBase64;
-
-                                try {
-                                  toast.info("Enviando para a nuvem...", "Aguarde");
-                                  finalUrl = await uploadFile(file, `settings/mobile_bg_${Date.now()}.jpg`);
-                                } catch (storageErr) {
-                                  console.warn("Firebase Storage falhou, usando imagem comprimida:", storageErr);
-                                }
-
-                                setSettings({
-                                  ...settings,
-                                  visual: {
-                                    ...(settings.visual || {}),
-                                    mobileBackgroundImage: finalUrl
-                                  }
-                                });
-                                toast.success("Imagem mobile processada! Clique em 'Salvar Alterações'.", "Sucesso");
-                              } catch (err) {
-                                console.error("Erro ao processar:", err);
-                                toast.error("Erro ao processar imagem.", "Erro");
-                              } finally {
-                                setSavingSettings(false);
-                              }
-                            }
-                          }}
-                        />
-                      </div>
-                      <div className="text-center text-xs text-gray-500">
-                        <span>Recomendado: 1080x1920px (Vertical)</span>
-                      </div>
-                    </div>
-
-                    {/* Login Messages */}
-                    <div className="space-y-4 md:col-span-2 border-t border-gray-100 pt-6">
-                      <label className="block text-sm font-medium text-gray-700 uppercase tracking-wider mb-2">Mensagens de Boas-vindas</label>
-                      <div className="grid md:grid-cols-2 gap-6">
-                        <div>
-                          <label className="block text-xs text-gray-500 mb-1">Título Principal</label>
-                          <Input
-                            value={settings.visual?.loginTitle || 'MotoJá'}
-                            onChange={(e) => setSettings({
-                              ...settings,
-                              visual: { ...(settings.visual as any), loginTitle: e.target.value }
-                            })}
-                            placeholder="Ex: MotoJá"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs text-gray-500 mb-1">Subtítulo / Slogan</label>
-                          <Input
-                            value={settings.visual?.loginSubtitle || 'Gestão completa da plataforma.'}
-                            onChange={(e) => setSettings({
-                              ...settings,
-                              visual: { ...(settings.visual as any), loginSubtitle: e.target.value }
-                            })}
-                            placeholder="Ex: Gestão completa..."
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Primary Color & Preview */}
-                    <div className="space-y-6">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Cor de Destaque (Branding)</label>
-                        <div className="flex items-center gap-3">
-                          <div className="relative w-12 h-12 rounded-lg overflow-hidden border border-gray-200 shadow-sm cursor-pointer hover:scale-105 transition-transform">
-                            <input
-                              type="color"
-                              value={settings.visual?.primaryColor || '#f97316'}
-                              onChange={(e) => setSettings({
-                                ...settings,
-                                visual: {
-                                  ...(settings.visual || { appLogoUrl: '', loginBackgroundImage: '' }),
-                                  primaryColor: e.target.value
-                                }
-                              })}
-                              className="absolute inset-[-50%] w-[200%] h-[200%] cursor-pointer p-0 m-0 border-0"
-                            />
-                          </div>
-                          <div className="flex-1">
-                            <Input
-                              value={settings.visual?.primaryColor || '#f97316'}
-                              onChange={(e) => setSettings({
-                                ...settings,
-                                visual: {
-                                  ...(settings.visual || { appLogoUrl: '', loginBackgroundImage: '' }),
-                                  primaryColor: e.target.value
-                                }
-                              })}
-                              placeholder="#000000"
-                            />
-                          </div>
-                        </div>
-                        <p className="text-xs text-gray-400 mt-2">Esta cor será utilizada em botões e destaques na tela de login do administrador.</p>
-                      </div>
-
-                      <div className="bg-gray-100 p-4 rounded-lg border border-gray-200">
-                        <p className="text-xs font-bold text-gray-500 uppercase mb-2">Pré-visualização do Botão</p>
-                        <button
-                          className="px-4 py-2 rounded-lg text-white font-bold shadow-lg transition-transform hover:scale-105"
-                          style={{ backgroundColor: settings.visual?.primaryColor || '#f97316' }}
-                        >
-                          Entrar no Painel
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-                {/* Moto Pricing */}
-                <Card className="p-6">
-                  <div className="flex items-center gap-3 mb-6 border-b border-gray-100 pb-4">
-                    <div className="bg-orange-100 p-2 rounded-lg">
-                      <Bike className="text-orange-600" size={24} />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-bold text-gray-900">Preços: Mototaxi</h3>
-                      <p className="text-sm text-gray-500">Configuração para corridas de moto</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Preço Base (R$)</label>
-                        <Input
-                          type="number"
-                          value={settings.basePrice}
-                          onChange={(e) => setSettings({ ...settings, basePrice: parseFloat(e.target.value) })}
-                          placeholder="0.00"
-                          icon={<span className="text-gray-400 text-sm">R$</span>}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Preço por KM (R$)</label>
-                        <Input
-                          type="number"
-                          value={settings.pricePerKm}
-                          onChange={(e) => setSettings({ ...settings, pricePerKm: parseFloat(e.target.value) })}
-                          placeholder="0.00"
-                          icon={<span className="text-gray-400 text-sm">R$</span>}
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Comissão da Plataforma (%)</label>
-                      <Input
-                        type="number"
-                        value={settings.platformFee}
-                        onChange={(e) => setSettings({ ...settings, platformFee: parseFloat(e.target.value) })}
-                        placeholder="0"
-                        icon={<span className="text-gray-400 text-sm">%</span>}
-                      />
-                    </div>
-                  </div>
-                </Card>
-
-                {/* Delivery Moto Pricing */}
-                <Card className="p-6">
-                  <div className="flex items-center gap-3 mb-6 border-b border-gray-100 pb-4">
-                    <div className="bg-blue-100 p-2 rounded-lg">
-                      <Package className="text-blue-600" size={24} />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-bold text-gray-900">Preços: Moto entregas</h3>
-                      <p className="text-sm text-gray-500">Configuração para entrega de pacotes</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Preço Base (R$)</label>
-                        <Input
-                          type="number"
-                          value={settings.deliveryMotoBasePrice || 6.00}
-                          onChange={(e) => setSettings({ ...settings, deliveryMotoBasePrice: parseFloat(e.target.value) })}
-                          placeholder="0.00"
-                          icon={<span className="text-gray-400 text-sm">R$</span>}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Preço por KM (R$)</label>
-                        <Input
-                          type="number"
-                          value={settings.deliveryMotoPricePerKm || 2.20}
-                          onChange={(e) => setSettings({ ...settings, deliveryMotoPricePerKm: parseFloat(e.target.value) })}
-                          placeholder="0.00"
-                          icon={<span className="text-gray-400 text-sm">R$</span>}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-
-                {/* Bike Pricing */}
-                <Card className="p-6">
-                  <div className="flex items-center gap-3 mb-6 border-b border-gray-100 pb-4">
-                    <div className="bg-green-100 p-2 rounded-lg">
-                      <Leaf className="text-green-600" size={24} />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-bold text-gray-900">Preços: Bike (Entregas)</h3>
-                      <p className="text-sm text-gray-500">Configuração para entregas ecológicas</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Preço Base (R$)</label>
-                        <Input
-                          type="number"
-                          value={settings.bikeBasePrice}
-                          onChange={(e) => setSettings({ ...settings, bikeBasePrice: parseFloat(e.target.value) })}
-                          placeholder="0.00"
-                          icon={<span className="text-gray-400 text-sm">R$</span>}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Preço por KM (R$)</label>
-                        <Input
-                          type="number"
-                          value={settings.bikePricePerKm}
-                          onChange={(e) => setSettings({ ...settings, bikePricePerKm: parseFloat(e.target.value) })}
-                          placeholder="0.00"
-                          icon={<span className="text-gray-400 text-sm">R$</span>}
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Distância Máxima (KM)</label>
-                      <Input
-                        type="number"
-                        value={settings.bikeMaxDistance}
-                        onChange={(e) => setSettings({ ...settings, bikeMaxDistance: parseFloat(e.target.value) })}
-                        placeholder="5"
-                        icon={<span className="text-gray-400 text-sm">KM</span>}
-                      />
-                      <p className="text-xs text-gray-400 mt-1">Bicicletas não farão entregas acima desta distância.</p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Comissão da Plataforma (%)</label>
-                      <Input
-                        type="number"
-                        value={settings.bikePlatformFee}
-                        onChange={(e) => setSettings({ ...settings, bikePlatformFee: parseFloat(e.target.value) })}
-                        placeholder="0"
-                        icon={<span className="text-gray-400 text-sm">%</span>}
-                      />
-                    </div>
-                  </div>
-                </Card>
-
-                {/* Company Data */}
-                <Card className="p-6 md:col-span-2">
-                  <div className="flex items-center gap-3 mb-6 border-b border-gray-100 pb-4">
-                    <div className="bg-blue-100 p-2 rounded-lg">
-                      <Building2 className="text-blue-600" size={24} />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-bold text-gray-900">Dados da Empresa</h3>
-                      <p className="text-sm text-gray-500">Informações legais e endereço da central</p>
-                    </div>
-                  </div>
-
-                  <div className="grid md:grid-cols-2 gap-6">
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Razão Social</label>
-                        <Input
-                          value={settings.companyName}
-                          onChange={(e) => setSettings({ ...settings, companyName: e.target.value })}
-                          placeholder="Nome da Empresa"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">CNPJ</label>
-                        <Input
-                          value={settings.companyCnpj}
-                          onChange={(e) => setSettings({ ...settings, companyCnpj: e.target.value })}
-                          placeholder="00.000.000/0000-00"
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Email Contato</label>
-                          <Input
-                            value={settings.companyEmail}
-                            onChange={(e) => setSettings({ ...settings, companyEmail: e.target.value })}
-                            placeholder="email@empresa.com"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Telefone</label>
-                          <Input
-                            value={settings.companyPhone}
-                            onChange={(e) => setSettings({ ...settings, companyPhone: e.target.value })}
-                            placeholder="(00) 0000-0000"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Endereço Completo</label>
-                        <AddressInput
-                          value={settings.companyAddress}
-                          onChange={(val) => setSettings({ ...settings, companyAddress: val })}
-                          placeholder="Rua, Número, Bairro"
-                        />
-                      </div>
-                      <div className="grid grid-cols-3 gap-4">
-                        <div className="col-span-1">
-                          <label className="block text-sm font-medium text-gray-700 mb-1">CEP</label>
-                          <Input
-                            value={settings.companyCep}
-                            onChange={(e) => setSettings({ ...settings, companyCep: e.target.value })}
-                            placeholder="00000-000"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Cidade</label>
-                          <Input
-                            value={settings.companyCity}
-                            onChange={(e) => setSettings({ ...settings, companyCity: e.target.value })}
-                            placeholder="Cidade"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
-                          <Input
-                            value={settings.companyState}
-                            onChange={(e) => setSettings({ ...settings, companyState: e.target.value })}
-                            placeholder="UF"
-                            maxLength={2}
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Email Suporte App</label>
-                        <Input
-                          value={settings.supportEmail}
-                          onChange={(e) => setSettings({ ...settings, supportEmail: e.target.value })}
-                          placeholder="suporte@app.com"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              </div>
-
-              <div className="flex justify-end pt-4 border-t border-gray-200">
-                <Button onClick={handleSaveSettings} isLoading={savingSettings} className="w-full md:w-auto px-8">
-                  Salvar Todas as Alterações
-                </Button>
-              </div>
-            </div>
-          ) : activeTab === 'integrations' ? (
-            <div className="max-w-5xl mx-auto space-y-6 animate-fade-in p-6">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-800">Integrações do Sistema</h2>
-                  <p className="text-gray-500 text-sm">Configure gateways de pagamento, automações e email.</p>
-                </div>
-                <Button onClick={handleSaveSettings} isLoading={savingSettings}>Salvar Integrações</Button>
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Payment Gateways */}
-                <Card className="p-6">
-                  <div className="flex items-center gap-3 mb-6 border-b border-gray-100 pb-4">
-                    <div className="bg-green-100 p-2 rounded-lg text-green-600"><DollarSign size={24} /></div>
-                    <div>
-                      <h3 className="text-lg font-bold text-gray-900">Gateway de Pagamento</h3>
-                      <p className="text-sm text-gray-500">Para cobrança de faturas B2B</p>
-                    </div>
-                  </div>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Provedor</label>
-                      <select
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"
-                        value={settings.paymentGateway.provider}
-                        onChange={(e) => setSettings({ ...settings, paymentGateway: { ...settings.paymentGateway, provider: e.target.value as any } })}
-                      >
-                        <option value="none">Desativado</option>
-                        <option value="mercadopago">Mercado Pago</option>
-                        <option value="asaas">Asaas</option>
-                        <option value="stripe">Stripe</option>
-                      </select>
-                    </div>
-                    {settings.paymentGateway.provider !== 'none' && (
-                      <>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Chave de API (Public Key)</label>
-                          <Input
-                            value={settings.paymentGateway.apiKey}
-                            onChange={(e) => setSettings({ ...settings, paymentGateway: { ...settings.paymentGateway, apiKey: e.target.value } })}
-                            placeholder="Ex: APP_USR-..."
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Chave Secreta (Access Token)</label>
-                          <Input
-                            type="password"
-                            value={settings.paymentGateway.secretKey || ''}
-                            onChange={(e) => setSettings({ ...settings, paymentGateway: { ...settings.paymentGateway, secretKey: e.target.value } })}
-                            placeholder="Ex: APP_USR-..."
-                          />
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </Card>
-
-                {/* Email SMTP */}
-                <Card className="p-6">
-                  <div className="flex items-center gap-3 mb-6 border-b border-gray-100 pb-4">
-                    <div className="bg-blue-100 p-2 rounded-lg text-blue-600"><Mail size={24} /></div>
-                    <div>
-                      <h3 className="text-lg font-bold text-gray-900">Servidor de Email (SMTP)</h3>
-                      <p className="text-sm text-gray-500">Para envio de notificações do sistema</p>
-                    </div>
-                  </div>
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-3 gap-4">
-                      <div className="col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Host SMTP</label>
-                        <Input
-                          value={settings.smtp.host}
-                          onChange={(e) => setSettings({ ...settings, smtp: { ...settings.smtp, host: e.target.value } })}
-                          placeholder="smtp.gmail.com"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Porta</label>
-                        <Input
-                          type="number"
-                          value={settings.smtp.port}
-                          onChange={(e) => setSettings({ ...settings, smtp: { ...settings.smtp, port: parseInt(e.target.value) } })}
-                          placeholder="587"
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Email Remetente</label>
-                        <Input
-                          value={settings.smtp.fromEmail}
-                          onChange={(e) => setSettings({ ...settings, smtp: { ...settings.smtp, fromEmail: e.target.value } })}
-                          placeholder="noreply@app.com"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Nome Remetente</label>
-                        <Input
-                          value={settings.smtp.fromName}
-                          onChange={(e) => setSettings({ ...settings, smtp: { ...settings.smtp, fromName: e.target.value } })}
-                          placeholder="Suporte MotoJá"
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Usuário</label>
-                        <Input
-                          value={settings.smtp.user}
-                          onChange={(e) => setSettings({ ...settings, smtp: { ...settings.smtp, user: e.target.value } })}
-                          placeholder="user@email.com"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Senha</label>
-                        <Input
-                          type="password"
-                          value={settings.smtp.pass}
-                          onChange={(e) => setSettings({ ...settings, smtp: { ...settings.smtp, pass: e.target.value } })}
-                          placeholder="••••••••"
-                        />
-                      </div>
-                    </div>
-                    <div className="pt-2">
-                      <Button variant="outline" fullWidth onClick={handleTestSMTP}>
-                        Testar Conexão SMTP
-                      </Button>
-                      {smtpTestResult && (
-                        <div className={`mt-2 text-xs font-bold ${smtpTestResult.success ? 'text-green-600' : 'text-red-500'}`}>
-                          {smtpTestResult.success ? '✅ ' : '❌ '}{smtpTestResult.message}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </Card>
-
-                {/* N8N Automation */}
-                <Card className="p-6 md:col-span-2">
-                  <div className="flex items-center gap-3 mb-6 border-b border-gray-100 pb-4">
-                    <div className="bg-purple-100 p-2 rounded-lg text-purple-600"><Share2 size={24} /></div>
-                    <div>
-                      <h3 className="text-lg font-bold text-gray-900">Automação com N8N</h3>
-                      <p className="text-sm text-gray-500">Webhooks para eventos do sistema</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-4">
-                    <div className="mt-2">
-                      <input
-                        type="checkbox"
-                        checked={settings.n8n.enabled}
-                        onChange={(e) => setSettings({ ...settings, n8n: { ...settings.n8n, enabled: e.target.checked } })}
-                        className="w-5 h-5 text-orange-600 rounded focus:ring-orange-500"
-                      />
-                    </div>
-                    <div className="flex-1 space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-900 mb-1">Ativar Integração N8N</label>
-                        <p className="text-xs text-gray-500 mb-3">Envia webhooks para o fluxo do N8N quando eventos ocorrem (ex: nova corrida, novo motorista).</p>
-                        <Input
-                          value={settings.n8n.webhookUrl}
-                          onChange={(e) => setSettings({ ...settings, n8n: { ...settings.n8n, webhookUrl: e.target.value } })}
-                          placeholder="https://n8n.seuserver.com/webhook/..."
-                          disabled={!settings.n8n.enabled}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              </div>
+              </Card>
             </div>
           ) : activeTab === 'users' ? (
             <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
               <div className="flex justify-between items-center">
-                <h2 className="text-2xl font-bold text-gray-800">Passageiros Cadastrados</h2>
-                <div className="bg-orange-100 text-orange-800 px-3 py-1 rounded-full text-sm font-bold">
-                  {safeData.passengers?.length || 0} Total
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-800">Passageiros Cadastrados</h2>
+                  <p className="text-gray-500 text-sm">Gerencie os clientes da plataforma</p>
                 </div>
               </div>
+
+              {/* Bulk Actions Bar for Users */}
+              {selectedUserIds.length > 0 && (
+                <div className="bg-orange-50 border border-orange-200 p-3 rounded-xl mb-4 flex items-center justify-between animate-fade-in">
+                  <span className="text-sm text-orange-800 font-bold ml-2">
+                    {selectedUserIds.length} selecionados
+                  </span>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      className="py-1 px-3 h-8 text-xs bg-white"
+                      onClick={() => setSelectedUserIds([])}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="py-1 px-3 h-8 text-xs bg-white !border-red-200 !text-red-600 hover:!bg-red-50"
+                      onClick={() => handleUserBulkAction('delete')}
+                    >
+                      <Trash2 size={14} className="mr-1" /> Excluir
+                    </Button>
+                    <Button
+                      variant="danger"
+                      className="py-1 px-3 h-8 text-xs"
+                      onClick={() => handleUserBulkAction('block')}
+                    >
+                      <Lock size={14} className="mr-1" /> Bloquear
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               <Card className="overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm text-gray-600">
-                    <thead className="bg-gray-50 text-gray-900 font-semibold border-b border-gray-200">
+                    <thead className="bg-gray-50 text-gray-900 font-semibold">
                       <tr>
-                        <th className="p-4">Passageiro</th>
+                        <th className="p-4">
+                          <input
+                            type="checkbox"
+                            checked={selectedUserIds.length === (safeData?.passengers || []).length && (safeData?.passengers || []).length > 0}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedUserIds((safeData?.passengers || []).map(u => u.id));
+                              } else {
+                                setSelectedUserIds([]);
+                              }
+                            }}
+                            className="rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer"
+                          />
+                        </th>
+                        <th className="p-4">Nome</th>
+                        <th className="p-4">Email</th>
                         <th className="p-4">Telefone</th>
-                        <th className="p-4">Avaliação</th>
+                        <th className="p-4">Status</th>
                         <th className="p-4 text-right">Ações</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {safeData.passengers && safeData.passengers.length > 0 ? (
-                        safeData.passengers.map((user) => (
-                          <tr key={user.id} className="hover:bg-gray-50 transition cursor-pointer" onClick={() => setViewUser(user)}>
-                            <td className="p-4">
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 font-bold overflow-hidden">
-                                  {user.avatar ? <img src={user.avatar} className="w-full h-full object-cover" /> : user.name.charAt(0)}
-                                </div>
-                                <div>
-                                  <p className="font-semibold text-gray-900">{user.name}</p>
-                                  <p className="text-xs text-gray-400">ID: {user.id.substring(0, 8)}...</p>
+                      {(safeData?.passengers || []).map((user) => (
+                        <tr
+                          key={user.id}
+                          className={`hover:bg-gray-50 transition ${selectedUserIds.includes(user.id) ? 'bg-orange-50' : ''}`}
+                          onClick={() => setViewUser(user)}
+                        >
+                          <td className="p-4" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={selectedUserIds.includes(user.id)}
+                              onChange={() => {
+                                if (selectedUserIds.includes(user.id)) {
+                                  setSelectedUserIds(selectedUserIds.filter(id => id !== user.id));
+                                } else {
+                                  setSelectedUserIds([...selectedUserIds, user.id]);
+                                }
+                              }}
+                              className="rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer"
+                            />
+                          </td>
+                          <td className="p-4">
+                            <div className="flex items-center gap-3">
+                              <img src={user.avatar || `https://ui-avatars.com/api/?name=${user.name}`} className="w-10 h-10 rounded-full object-cover" />
+                              <div>
+                                <div className="font-bold text-gray-900">{user.name}</div>
+                                <div className="text-xs text-gray-500 flex items-center gap-1">
+                                  <span className="font-mono bg-gray-100 px-1 rounded text-[10px]">{user.id.substring(0, 8).toUpperCase()}</span>
                                 </div>
                               </div>
-                            </td>
-                            <td className="p-4 font-mono">{user.phone}</td>
-                            <td className="p-4">
-                              <div className="flex items-center gap-1 font-medium text-gray-900">
-                                <Star size={14} className="text-yellow-400 fill-current" /> {user.rating}
-                              </div>
-                            </td>
-                            <td className="p-4 text-right">
-                              <button className="text-gray-400 hover:text-orange-500 transition">
-                                <MoreVertical size={18} />
+                            </div>
+                          </td>
+                          <td className="p-4">{user.email || '-'}</td>
+                          <td className="p-4">{user.phone || '-'}</td>
+                          <td className="p-4">
+                            <span className={`px-2 py-1 rounded-full text-xs font-bold ${user.status === 'blocked' || user.isBlocked ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                              {user.status === 'blocked' || user.isBlocked ? 'Bloqueado' : 'Ativo'}
+                            </span>
+                          </td>
+                          <td className="p-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button className="p-2 text-gray-500 hover:bg-gray-100 rounded-full transition" title="Ver detalhes" onClick={(e) => { e.stopPropagation(); setViewUser(user); }}>
+                                <Eye size={16} />
                               </button>
-                            </td>
-                          </tr>
-                        ))
-                      ) : (
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {(safeData?.passengers || []).length === 0 && (
                         <tr>
-                          <td colSpan={4} className="p-8 text-center text-gray-400">
-                            Nenhum passageiro encontrado.
+                          <td colSpan={6} className="p-8 text-center text-gray-400">
+                            <Users size={48} className="mx-auto mb-2 opacity-50" />
+                            <p>Nenhum passageiro encontrado.</p>
                           </td>
                         </tr>
                       )}
@@ -5386,6 +3807,96 @@ const AdminDashboardContent = ({ onLogout }: { onLogout?: () => void }) => {
                   </table>
                 </div>
               </Card>
+            </div>
+          ) : activeTab === 'occurrences' ? (
+            <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold text-gray-800">Gerenciamento de Ocorrências</h2>
+                <Button className="py-2" onClick={() => setShowNewOccurrenceModal(true)}>Nova Ocorrência</Button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Pending */}
+                <div className="bg-orange-50 p-4 rounded-xl border border-orange-100">
+                  <h3 className="font-bold text-orange-800 mb-3 flex items-center gap-2"><AlertTriangle size={18} /> Pendentes</h3>
+                  <div className="space-y-3">
+                    {(notifications || []).filter(n => !n.read).map(notif => (
+                      <div key={notif.id} className="bg-white p-3 rounded-lg shadow-sm border border-orange-200 cursor-pointer hover:border-orange-400 transition" onClick={() => setSelectedOccurrence(notif)}>
+                        <p className="font-bold text-sm text-gray-800">{notif.title}</p>
+                        <p className="text-xs text-gray-500 line-clamp-2">{notif.message}</p>
+                        <p className="text-[10px] text-gray-400 mt-2 text-right">{new Date(notif.time).toLocaleString()}</p>
+                      </div>
+                    ))}
+                    {(notifications || []).filter(n => !n.read).length === 0 && <p className="text-xs text-gray-400 text-center py-4">Nenhuma ocorrência pendente.</p>}
+                  </div>
+                </div>
+                {/* In Progress / Recent */}
+                <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                  <h3 className="font-bold text-blue-800 mb-3 flex items-center gap-2"><Clock size={18} /> Recentes</h3>
+                  <div className="space-y-3">
+                    {(notifications || []).filter(n => n.read).slice(0, 5).map(notif => (
+                      <div key={notif.id} className="bg-white p-3 rounded-lg shadow-sm border border-blue-200 cursor-pointer hover:border-blue-400 transition opacity-80" onClick={() => setSelectedOccurrence(notif)}>
+                        <p className="font-bold text-sm text-gray-800">{notif.title}</p>
+                        <p className="text-xs text-gray-500 line-clamp-1">{notif.message}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {/* Stats */}
+                <div className="space-y-4">
+                  <Card className="p-4 flex items-center gap-4">
+                    <div className="p-3 bg-red-100 text-red-600 rounded-full"><AlertTriangle size={24} /></div>
+                    <div>
+                      <p className="text-2xl font-bold">{(notifications || []).filter(n => n.type === 'ride_issue').length}</p>
+                      <p className="text-xs text-gray-500">Problemas em Corridas</p>
+                    </div>
+                  </Card>
+                  <Card className="p-4 flex items-center gap-4">
+                    <div className="p-3 bg-green-100 text-green-600 rounded-full"><DollarSign size={24} /></div>
+                    <div>
+                      <p className="text-2xl font-bold">{(notifications || []).filter(n => n.type === 'payment').length}</p>
+                      <p className="text-xs text-gray-500">Financeiro</p>
+                    </div>
+                  </Card>
+                </div>
+              </div>
+            </div>
+          ) : activeTab === 'reports' ? (
+            <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
+              <h2 className="text-2xl font-bold text-gray-800">Relatórios e Métricas</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Card className="p-6">
+                  <h3 className="font-bold text-lg mb-4">Volume de Corridas (Últimos 7 dias)</h3>
+                  <div className="h-64 flex items-end justify-between px-4 gap-2">
+                    {[65, 40, 80, 55, 90, 70, 85].map((h, i) => (
+                      <div key={i} className="flex flex-col items-center gap-2 w-full">
+                        <div className="w-full bg-orange-500 rounded-t-lg transition hover:bg-orange-600" style={{ height: `${h}%` }}></div>
+                        <span className="text-xs text-gray-500">{['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'][i]}</span>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+                <Card className="p-6">
+                  <h3 className="font-bold text-lg mb-4">Faturamento por Categoria</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex justify-between text-sm mb-1"><span>Moto - App</span><span className="font-bold">R$ {(safeData?.stats?.revenue || 12500) * 0.6}</span></div>
+                      <div className="w-full bg-gray-100 rounded-full h-2"><div className="bg-orange-500 h-2 rounded-full" style={{ width: '60%' }}></div></div>
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-sm mb-1"><span>Moto - Particular</span><span className="font-bold">R$ {(safeData?.stats?.revenue || 12500) * 0.25}</span></div>
+                      <div className="w-full bg-gray-100 rounded-full h-2"><div className="bg-blue-500 h-2 rounded-full" style={{ width: '25%' }}></div></div>
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-sm mb-1"><span>Entregas</span><span className="font-bold">R$ {(safeData?.stats?.revenue || 12500) * 0.15}</span></div>
+                      <div className="w-full bg-gray-100 rounded-full h-2"><div className="bg-green-500 h-2 rounded-full" style={{ width: '15%' }}></div></div>
+                    </div>
+                  </div>
+                </Card>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => handleExport('csv')}><FileText size={16} className="mr-2" /> Exportar CSV</Button>
+                <Button variant="outline" onClick={() => handleExport('pdf')}><FileText size={16} className="mr-2" /> Exportar PDF</Button>
+              </div>
             </div>
           ) : activeTab === 'campaigns' ? (
             <CampaignsTab
@@ -5405,7 +3916,7 @@ const AdminDashboardContent = ({ onLogout }: { onLogout?: () => void }) => {
       </div >
 
       {showCompanyModal && <CompanyFormModal company={editingCompany} onClose={() => setShowCompanyModal(false)} onSave={handleSaveCompany} onDelete={handleDeleteCompany} onNotify={handleNotify} />}
-      {viewDriver && <DriverDetailModal driver={viewDriver} onClose={() => setViewDriver(null)} />}
+      {viewDriver && <DriverDetailModal driver={viewDriver} rides={safeData.recentRides} onClose={() => setViewDriver(null)} />}
       {viewUser && <UserDetailModal user={viewUser} rides={safeData.recentRides} onClose={() => setViewUser(null)} />}
       {showAddDriver && <AddDriverModal onClose={() => setShowAddDriver(false)} />}
 
@@ -5933,11 +4444,7 @@ const AdminDashboardContent = ({ onLogout }: { onLogout?: () => void }) => {
     </div >
   );
 
-  function DollarSign({ size = 24, className }: { size?: number, className?: string }) {
-    return (
-      <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="12" x2="12" y1="2" y2="22" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
-    )
-  }
+
 };
 
 const safeDate = (date: any): Date => {

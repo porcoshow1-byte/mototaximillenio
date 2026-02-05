@@ -41,6 +41,7 @@ interface MapProps {
   onEditDestination?: () => void;
   isLoading?: boolean;
   initialCenter?: Coords;
+  layoutTrigger?: any; // Change in this prop triggers map resize
 }
 
 const mapContainerStyle = {
@@ -64,7 +65,7 @@ const MapboxMapInner: React.FC<MapProps> = (props) => {
     showDriver, showRoute, origin, destination, driverLocation, drivers, waypoints,
     recenterTrigger, onCameraChange, fitBoundsPadding,
     originAddress, destinationAddress, tripProfile,
-    onEditOrigin, onEditDestination
+    onEditOrigin, onEditDestination, layoutTrigger
   } = props;
   const mapRef = useRef<MapRef>(null);
   const [routeGeoJSON, setRouteGeoJSON] = useState<any>(null);
@@ -192,6 +193,27 @@ const MapboxMapInner: React.FC<MapProps> = (props) => {
       fitBounds(mapRef.current);
     }
   }, [recenterTrigger, showRoute, fitBounds, driverLocation]); // Added driverLocation to auto-follow
+
+  // Handle Layout Changes (Sidebar Toggle) using ResizeObserver for smooth real-time updates
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    // Get the map container element
+    const map = mapRef.current.getMap();
+    const container = map.getContainer();
+
+    const resizeObserver = new ResizeObserver(() => {
+      mapRef.current?.resize();
+    });
+
+    if (container) {
+      resizeObserver.observe(container);
+    }
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []); // Run once on mount, as we observe the persistent container
 
   // Fetch Route from Mapbox Directions API
   useEffect(() => {

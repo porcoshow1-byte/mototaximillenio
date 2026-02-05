@@ -284,7 +284,25 @@ export const UserApp = () => {
   const [driverRating, setDriverRating] = useState(5);
   const [driverRatingComment, setDriverRatingComment] = useState('');
   const [recenterCount, setRecenterCount] = useState(0);
+
   const [mapMoved, setMapMoved] = useState(false);
+
+  // Banner Carousel State
+  const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
+
+  // Auto-slide effect for banners
+  useEffect(() => {
+    const campaigns = settings.campaigns?.filter(c => c.active) || [];
+    // If we have more than 1 banner (including fallback if empty), cycle them
+    const totalBanners = campaigns.length > 0 ? campaigns.length : 1;
+
+    if (totalBanners > 1) {
+      const interval = setInterval(() => {
+        setCurrentBannerIndex(prev => (prev + 1) % totalBanners);
+      }, 5000); // 5 seconds per slide
+      return () => clearInterval(interval);
+    }
+  }, [settings.campaigns]);
 
   // --- PERSISTENCE LOGIC START ---
   const nearbyDrivers = [MOCK_DRIVER]; // Fix: Define Mock Drivers for Map
@@ -359,20 +377,16 @@ export const UserApp = () => {
 
   // Trigger Notification on Driver Found
   useEffect(() => {
-    if (currentRide?.status === 'accepted' && 'Notification' in window && Notification.permission === 'granted') {
-      // Check if we haven't already notified for this specific ride/status interaction
-      // Simple implementation: just fire. Browser usually allows.
-      try {
-        new Notification("Motorista Encontrado! 🏍️", {
-          body: `${currentRide.driver?.name} aceitou sua corrida e está a caminho!`,
-          icon: '/pwa-192x192.png', // Optional: requires valid path
-          vibrate: [200, 100, 200]
-        } as any);
-      } catch (e) {
-        console.error("Erro ao enviar notificação:", e);
-      }
+    if (currentRide?.status === 'accepted') {
+      // Play sound immediately (regardless of app focus)
+      playSound('rideAccepted');
+
+      // Show system notification if in background
+      showNotification('rideAccepted', {
+        driverName: currentRide.driver?.name
+      });
     }
-  }, [currentRide?.status, currentRide?.driver?.name]);
+  }, [currentRide?.status]);
 
   // Trigger Rating Modal when ride is completed
   useEffect(() => {
@@ -1332,43 +1346,123 @@ export const UserApp = () => {
                   <MapPin size={24} className="text-orange-500" />
                 </div>
               </div>
-              {/* Animated Progress Bar */}
-              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-orange-400 to-orange-500 rounded-full transition-all duration-300"
-                  style={{ width: `${searchProgress}%` }}
-                />
+              {/* Pulsing Infinite Bar */}
+              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden w-full mt-2">
+                <div className="animate-signal-beam"></div>
               </div>
+
             </div>
 
             {/* Partner Ad Banner - Horizontal Scroll */}
+            {/* Partner Ad Banner - Dynamic Carousel */}
             <div className="px-5 mb-4">
-              <div className="flex gap-3 overflow-x-auto no-scrollbar">
-                {campaignBanner ? (
-                  <img
-                    src={campaignBanner}
-                    alt="Promoção"
-                    className="h-28 w-auto rounded-xl object-cover flex-shrink-0"
-                  />
-                ) : (
-                  <>
-                    {/* Default placeholder banners */}
-                    <div className="flex-shrink-0 h-28 w-44 bg-gradient-to-br from-orange-400 to-orange-600 rounded-xl flex flex-col items-center justify-center p-3 text-white">
-                      <span className="text-xs font-bold opacity-80">MotoJá</span>
-                      <span className="text-sm font-bold text-center">Indique amigos e ganhe!</span>
-                      <button className="mt-2 px-3 py-1 bg-white text-orange-600 rounded-full text-xs font-bold">
-                        Saiba mais
-                      </button>
+              <div className="relative w-full h-auto aspect-[21/9] rounded-xl overflow-hidden shadow-sm border border-gray-100 bg-gray-100">
+                {(() => {
+                  const activeCampaigns = settings.campaigns?.filter(c => c.active) || [];
+                  const banners = activeCampaigns.length > 0 ? activeCampaigns : [
+                    {
+                      id: 'default-invite',
+                      title: 'Indique amigos e ganhe!',
+                      imageUrl: '',
+                      linkUrl: '',
+                      active: true
+                    }
+                  ];
+
+                  return (
+                    <div className="w-full h-full relative group bg-gray-100 rounded-xl overflow-hidden">
+                      {banners.map((banner, idx) => {
+                        const isActive = idx === (currentBannerIndex % banners.length);
+
+                        // "Solid Stack" Transition Logic:
+                        // Active: Fades IN (opacity 0->100) over 500ms. Z-20 (Top).
+                        // Inactive: Waits 500ms (fully opaque) then snaps to 0. Z-10 (Bottom).
+                        // This ensures the bottom image is ALWAYS visible until completely covered.
+                        const transitionClass = isActive
+                          ? 'opacity-100 z-20 transition-opacity duration-500 ease-out' // Enter
+                          : 'opacity-0 z-10 transition-opacity duration-0 delay-500';   // Exit (Wait then snap)
+
+                        return (
+                          <div
+                            key={banner.id}
+                            className={`absolute inset-0 w-full h-full ${transitionClass}`}
+                            style={{ pointerEvents: isActive ? 'auto' : 'none' }}
+                          >
+                            {banner.imageUrl ? (
+                              <img
+                                src={banner.imageUrl}
+                                alt={banner.title}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-full h-full bg-gradient-to-r from-orange-500 to-orange-600 flex flex-col items-center justify-center text-white p-4">
+                                <span className="text-xs font-bold opacity-80 uppercase tracking-widest">MotoJá</span>
+                                <h4 className="text-lg font-bold text-center mt-1">{banner.title}</h4>
+                                <button className="mt-2 px-4 py-1.5 bg-white text-orange-600 rounded-full text-xs font-bold shadow-sm pointer-events-auto">
+                                  Saiba mais
+                                </button>
+                              </div>
+                            )}
+
+                            {/* Click Link Overlay */}
+                            {banner.linkUrl && isActive && (
+                              <a
+                                href={banner.linkUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="absolute inset-0 z-20"
+                                aria-label={`Ir para ${banner.title}`}
+                              >
+                                <span className="sr-only">Abrir link</span>
+                              </a>
+                            )}
+
+                            {/* CTA Button Layer - Force Extreme Z-Index */}
+                            {banner.showCta && (
+                              <div className="absolute inset-0 flex items-center justify-center z-30 pointer-events-none">
+                                <button
+                                  className="bg-white text-orange-600 px-6 py-2 rounded-full text-sm font-bold shadow-lg uppercase tracking-wide transform hover:scale-105 transition-transform pointer-events-auto cursor-pointer border-2 border-white/50"
+                                >
+                                  {banner.ctaType === 'saiba_mais' && 'Saiba mais'}
+                                  {banner.ctaType === 'ligar' && 'Ligar'}
+                                  {banner.ctaType === 'whatsapp' && 'WhatsApp'}
+                                  {banner.ctaType === 'chamar_zap' && 'Chamar no zap'}
+                                  {banner.ctaType === 'zap' && 'Zap'}
+                                  {banner.ctaType === 'chama' && 'Chama'}
+                                  {banner.ctaType === 'eu_quero' && 'Eu quero!'}
+                                  {banner.ctaType === 'comprar' && 'Comprar'}
+                                  {banner.ctaType === 'pedir_agora' && 'Pedir agora'}
+                                  {!banner.ctaType && 'Saiba mais'}
+                                </button>
+                              </div>
+                            )}
+
+                            {/* Fallback CTA for default/legacy banners */}
+                            {!banner.showCta && banner.id === 'default-invite' && (
+                              <div className="absolute bottom-3 right-3 z-20 pointer-events-none">
+                                <span className="bg-white text-orange-600 px-4 py-1.5 rounded-full text-xs font-bold shadow-md">
+                                  SAIBA MAIS
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+
+                      {/* Carousel Indicators (Dots) */}
+                      {banners.length > 1 && (
+                        <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-1.5 z-30">
+                          {banners.map((_, idx) => (
+                            <div
+                              key={idx}
+                              className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${idx === (currentBannerIndex % banners.length) ? 'bg-white w-4' : 'bg-white/50'}`}
+                            />
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    <div className="flex-shrink-0 h-28 w-44 bg-gradient-to-br from-green-400 to-green-600 rounded-xl flex flex-col items-center justify-center p-3 text-white">
-                      <span className="text-xs font-bold opacity-80">Parceiro</span>
-                      <span className="text-sm font-bold text-center">Anuncie aqui!</span>
-                      <button className="mt-2 px-3 py-1 bg-white text-green-600 rounded-full text-xs font-bold">
-                        Contato
-                      </button>
-                    </div>
-                  </>
-                )}
+                  );
+                })()}
               </div>
             </div>
 
@@ -1438,8 +1532,9 @@ export const UserApp = () => {
             <div className="px-5">
               <button
                 onClick={() => setShowCancelConfirm(true)}
-                className="w-full py-3.5 text-red-500 font-bold text-base hover:bg-red-50 rounded-xl transition"
+                className="w-full py-3.5 bg-white border-2 border-red-100 text-red-600 font-bold rounded-xl hover:bg-red-50 transition-colors flex items-center justify-center gap-2 shadow-sm"
               >
+                <X size={20} />
                 Cancelar Busca
               </button>
             </div>

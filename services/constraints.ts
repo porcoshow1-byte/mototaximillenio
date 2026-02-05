@@ -13,7 +13,7 @@ export const checkUniqueness = async (
 ): Promise<UniquenessResult> => {
     if (!value) return { exists: false };
 
-    const cleanValue = field === 'email' ? value.toLowerCase().trim() : value.replace(/\D/g, '');
+    const cleanValue = field === 'email' ? value.toLowerCase().trim() : value.trim();
 
     // 1. Check Mock Data First (if DB not available or for legacy/mock mode)
     // Note: In a real hybrid app, we should check both if possible, or prefer DB if online.
@@ -36,18 +36,10 @@ export const checkUniqueness = async (
 
                 // For simplicity/robustness in this specific codebase context:
                 const qUserSnap = await getDocs(qUser);
-                if (!qUserSnap.empty) return { exists: true, message: `Este ${field === 'phone' ? 'TELEFONE' : field.toUpperCase()} já está cadastrado como Passageiro.` };
+                if (!qUserSnap.empty) return { exists: true, message: `Este ${field === 'phone' ? 'TELEFONE' : field.toUpperCase()} já está cadastrado em nossa base.` };
             }
 
-            // Check Drivers
-            if (field === 'email' || field === 'cpf' || field === 'phone') {
-                const driversRef = collection(db, 'drivers');
-                let qDriver = query(driversRef, where(field, '==', cleanValue));
-                // Drivers usually have 'cpf' field.
 
-                const qDriverSnap = await getDocs(qDriver);
-                if (!qDriverSnap.empty) return { exists: true, message: `Este ${field === 'phone' ? 'TELEFONE' : field.toUpperCase()} já está cadastrado como Motorista.` };
-            }
 
             // Check Companies
             if (field === 'email' || field === 'cnpj' || field === 'phone') {
