@@ -76,6 +76,19 @@ export interface SystemSettings {
     paymentGateway: PaymentGatewaySettings;
     n8n: N8NSettings;
     smtp: SMTPSettings;
+
+    // Campaigns (Partner Ads)
+    campaigns: CampaignBanner[];
+    activeCampaignBanner: string | null;
+}
+
+export interface CampaignBanner {
+    id: string;
+    title: string;
+    imageUrl: string;
+    linkUrl?: string;
+    active: boolean;
+    createdAt: string;
 }
 
 export const DEFAULT_SETTINGS: SystemSettings = {
@@ -133,7 +146,9 @@ export const DEFAULT_SETTINGS: SystemSettings = {
         secure: true,
         fromName: 'MotoJá Notificações',
         fromEmail: 'noreply@motoja.com.br'
-    }
+    },
+    campaigns: [],
+    activeCampaignBanner: null
 };
 
 import { db } from './firebase';

@@ -5,7 +5,7 @@ import {
   Loader2, RefreshCcw, AlertTriangle, Download, Calendar, CheckSquare, Square,
   X, Phone, Car, Star, Shield, Plus, History, MessageSquare, Send, ChevronRight, ChevronLeft,
   Leaf, Building2, DollarSign, Calculator, GripVertical, MapPin, Package, Navigation, Clock, Route,
-  AlertCircle, CheckCircle, Paperclip, Trash2, Edit2, Zap, Mail, Share2, Palette, Image as ImageIcon, Smartphone, LifeBuoy
+  AlertCircle, CheckCircle, Paperclip, Trash2, Edit2, Zap, Mail, Share2, Palette, Image as ImageIcon, Smartphone, LifeBuoy, Megaphone
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LineChart, Line, ResponsiveContainer } from 'recharts';
 import { Card, Button, Badge, Input, ConfirmationModal } from '../components/UI';
@@ -19,6 +19,7 @@ import { subscribeToTickets, SupportTicket } from '../services/support';
 import { db, isMockMode } from '../services/firebase';
 import { playSound } from '../services/audio';
 import { CompanyDashboard } from './CompanyDashboard';
+import { CampaignsTab } from './CampaignsTab';
 import { SimulatedMap } from '../components/SimulatedMap';
 import { Driver, RideRequest, User, Occurrence } from '../types';
 import { useJsApiLoader } from '@react-google-maps/api';
@@ -2639,6 +2640,7 @@ const AdminDashboardContent = ({ onLogout }: { onLogout?: () => void }) => {
           <p className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-3 mt-6 px-2">Configuração</p>
           <SidebarItem id="settings" icon={<Settings size={20} />} label="Ajustes" />
           <SidebarItem id="integrations" icon={<Zap size={20} />} label="Integrações" />
+          <SidebarItem id="campaigns" icon={<Megaphone size={20} />} label="Campanhas" />
         </div>
 
         <div className="p-4 border-t border-gray-800">
@@ -5385,6 +5387,13 @@ const AdminDashboardContent = ({ onLogout }: { onLogout?: () => void }) => {
                 </div>
               </Card>
             </div>
+          ) : activeTab === 'campaigns' ? (
+            <CampaignsTab
+              settings={settings}
+              setSettings={setSettings}
+              onSave={handleSaveSettings}
+              savingSettings={savingSettings}
+            />
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-gray-400">
               <Users size={64} className="mb-4 text-gray-200" />
