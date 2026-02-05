@@ -1275,57 +1275,179 @@ export const UserApp = () => {
   );
 
   /* Otimização: Overlay de busca reaproveitável dentro do RenderConfirm para não remontar o mapa */
-  const SearchingOverlayContent = () => (
-    <div className="absolute inset-0 z-50 flex flex-col justify-end animate-fade-in overflow-hidden pointer-events-none">
+  const SearchingOverlayContent = () => {
+    // Simulated search progress
+    const [searchProgress, setSearchProgress] = useState(0);
+    const [searchStatus, setSearchStatus] = useState('Localizando piloto próximo...');
 
-      {/* Top Gradient Fade to allow map visibility */}
-      <div className="absolute top-0 left-0 right-0 h-1/3 bg-gradient-to-b from-white/0 to-transparent pointer-events-none"></div>
+    useEffect(() => {
+      const interval = setInterval(() => {
+        setSearchProgress(prev => {
+          if (prev >= 100) {
+            setSearchStatus('Expandindo o raio de busca');
+            return 30; // Reset and loop
+          }
+          if (prev > 60) {
+            setSearchStatus('Conectando com piloto...');
+          }
+          return prev + 2;
+        });
+      }, 300);
+      return () => clearInterval(interval);
+    }, []);
 
-      {/* Main Content Area - Slide Up */}
-      <div className="relative z-10 w-full bg-white rounded-t-[35px] shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] pb-[calc(2rem+env(safe-area-inset-bottom))] pt-12 flex flex-col items-center pointer-events-auto animate-slide-up-slow">
+    // Get active campaign banner (placeholder - will be from Firebase)
+    const campaignBanner = settings.activeCampaignBanner || null;
 
-        {/* Pulse Icon - Floating slightly above or at top */}
-        <div className="absolute -top-10 left-1/2 -translate-x-1/2">
-          <div className="relative flex items-center justify-center">
-            {/* Ripple Effects */}
-            <div className="absolute w-64 h-64 bg-orange-500/10 rounded-full animate-ping-slow"></div>
-            <div className="absolute w-48 h-48 bg-orange-500/20 rounded-full animate-ping-slower delay-75"></div>
+    // Calculate display price based on selected service and route
+    let displayPrice = currentRide?.price || 0;
+    if (!displayPrice && routeInfo) {
+      const dist = routeInfo.distanceVal;
+      if (selectedService === ServiceType.MOTO_TAXI) {
+        displayPrice = (settings.basePrice || 5.00) + (dist * (settings.pricePerKm || 2.00));
+      } else if (selectedService === ServiceType.DELIVERY_MOTO) {
+        displayPrice = (settings.deliveryMotoBasePrice || 6.00) + (dist * (settings.deliveryMotoPricePerKm || 2.20));
+      } else if (selectedService === ServiceType.DELIVERY_BIKE) {
+        displayPrice = (settings.bikeBasePrice || 3.00) + (dist * (settings.bikePricePerKm || 1.50));
+      }
+    }
 
-            {/* Main Circle */}
-            <div className="relative z-10 w-24 h-24 bg-gradient-to-tr from-orange-500 to-orange-400 rounded-full flex items-center justify-center shadow-xl shadow-orange-500/30 border-[4px] border-white">
-              <Bike size={40} className="text-white drop-shadow-md" />
+    return (
+      <div className="absolute inset-0 z-50 flex flex-col pointer-events-none">
+        {/* Map shows behind - top portion transparent */}
+
+        {/* Bottom Sheet - Main Content */}
+        <div className="mt-auto pointer-events-auto">
+          {/* Rounded top card */}
+          <div className="bg-white rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.15)] pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+
+            {/* Search Status Header with Progress Bar */}
+            <div className="px-5 pt-5 pb-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">{searchStatus}</h3>
+                  <p className="text-xs text-gray-500">Tempo estimado: poucos segundos</p>
+                </div>
+                <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
+                  <MapPin size={24} className="text-orange-500" />
+                </div>
+              </div>
+              {/* Animated Progress Bar */}
+              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-orange-400 to-orange-500 rounded-full transition-all duration-300"
+                  style={{ width: `${searchProgress}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Partner Ad Banner - Horizontal Scroll */}
+            <div className="px-5 mb-4">
+              <div className="flex gap-3 overflow-x-auto no-scrollbar">
+                {campaignBanner ? (
+                  <img
+                    src={campaignBanner}
+                    alt="Promoção"
+                    className="h-28 w-auto rounded-xl object-cover flex-shrink-0"
+                  />
+                ) : (
+                  <>
+                    {/* Default placeholder banners */}
+                    <div className="flex-shrink-0 h-28 w-44 bg-gradient-to-br from-orange-400 to-orange-600 rounded-xl flex flex-col items-center justify-center p-3 text-white">
+                      <span className="text-xs font-bold opacity-80">MotoJá</span>
+                      <span className="text-sm font-bold text-center">Indique amigos e ganhe!</span>
+                      <button className="mt-2 px-3 py-1 bg-white text-orange-600 rounded-full text-xs font-bold">
+                        Saiba mais
+                      </button>
+                    </div>
+                    <div className="flex-shrink-0 h-28 w-44 bg-gradient-to-br from-green-400 to-green-600 rounded-xl flex flex-col items-center justify-center p-3 text-white">
+                      <span className="text-xs font-bold opacity-80">Parceiro</span>
+                      <span className="text-sm font-bold text-center">Anuncie aqui!</span>
+                      <button className="mt-2 px-3 py-1 bg-white text-green-600 rounded-full text-xs font-bold">
+                        Contato
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Price and Payment Row */}
+            <div className="mx-5 mb-4 flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100">
+              <div className="flex items-center gap-3">
+                <span className="text-xl font-bold text-gray-900">
+                  R$ {displayPrice.toFixed(2).replace('.', ',')}
+                </span>
+                {currentRide?.securityCode && (
+                  <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-bold rounded-full">
+                    Código: {currentRide.securityCode}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 text-gray-600">
+                {selectedPaymentMethod === 'cash' && <Banknote size={18} />}
+                {selectedPaymentMethod === 'pix' && <QrCode size={18} />}
+                {(selectedPaymentMethod === 'credit_machine' || selectedPaymentMethod === 'debit_machine' || selectedPaymentMethod === 'card') && <CreditCard size={18} />}
+                <span className="text-sm font-medium">
+                  {selectedPaymentMethod === 'cash' && 'Dinheiro'}
+                  {selectedPaymentMethod === 'pix' && 'Pix'}
+                  {selectedPaymentMethod === 'credit_machine' && 'Crédito'}
+                  {selectedPaymentMethod === 'debit_machine' && 'Débito'}
+                  {selectedPaymentMethod === 'card' && 'Cartão'}
+                </span>
+              </div>
+            </div>
+
+            {/* Route Details */}
+            <div className="mx-5 mb-4 p-4 bg-white border border-gray-100 rounded-xl">
+              <div className="flex items-start gap-3 mb-3">
+                <div className="flex flex-col items-center">
+                  <div className="w-3 h-3 rounded-full bg-green-500 border-2 border-green-200" />
+                  <div className="w-0.5 h-8 bg-gray-200 my-1" />
+                  <div className="w-3 h-3 rounded-full bg-orange-500 border-2 border-orange-200" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="mb-4">
+                    <p className="text-sm font-semibold text-gray-900 truncate">
+                      {routePoints[0]?.address?.split(',')[0] || 'Origem'}
+                    </p>
+                    <p className="text-xs text-gray-500 truncate">{routePoints[0]?.address || ''}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900 truncate">
+                      {routePoints[routePoints.length - 1]?.address?.split(',')[0] || 'Destino'}
+                    </p>
+                    <p className="text-xs text-gray-500 truncate">{routePoints[routePoints.length - 1]?.address || ''}</p>
+                  </div>
+                </div>
+                {/* Edit Route Button */}
+                <button
+                  onClick={() => {
+                    setStep('select_dest');
+                    setCurrentRide(null);
+                    setCurrentRideId(null);
+                  }}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition text-gray-400 hover:text-orange-500"
+                >
+                  <Pencil size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* Cancel Button */}
+            <div className="px-5">
+              <button
+                onClick={() => setShowCancelConfirm(true)}
+                className="w-full py-3.5 text-red-500 font-bold text-base hover:bg-red-50 rounded-xl transition"
+              >
+                Cancelar Busca
+              </button>
             </div>
           </div>
-        </div>
-
-        <h3 className="text-2xl font-bold text-gray-800 mb-2 mt-8">Localizando Piloto</h3>
-        <p className="text-gray-500 mb-8 max-w-xs text-center leading-relaxed font-medium px-6 text-sm">
-          Estamos conectando você ao parceiro mais próximo. Isso leva poucos segundos.
-        </p>
-
-        {/* Security Code Card (if exists) */}
-        {currentRide?.securityCode && (
-          <div className="bg-gray-50 px-6 py-3 rounded-2xl mb-8 border border-gray-100 flex items-center justify-between gap-4 w-64">
-            <div className="flex items-center gap-2">
-              <ShieldCheck size={18} className="text-green-600" />
-              <span className="text-xs font-bold text-gray-500 uppercase">Código</span>
-            </div>
-            <span className="text-2xl font-mono font-bold text-gray-800 tracking-widest">{currentRide.securityCode}</span>
-          </div>
-        )}
-
-        <div className="w-full px-8">
-          <Button
-            variant="outline"
-            onClick={() => setShowCancelConfirm(true)}
-            className="w-full py-4 rounded-xl border-gray-200 bg-white text-gray-700 font-bold hover:bg-gray-50 hover:border-gray-300 hover:text-red-500 transition-all shadow-sm text-base"
-          >
-            Cancelar Busca
-          </Button>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const RenderConfirm = () => {
     // Modificado: Mostrar TODOS os serviços (Moto, Entrega, Bike) independentemente do modo inicial
