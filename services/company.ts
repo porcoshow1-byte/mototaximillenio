@@ -1,8 +1,7 @@
 import { Company } from '../types';
-import { db, isMockMode } from './firebase';
-import { collection, doc, setDoc, getDoc, getDocs, onSnapshot, query, where, updateDoc } from 'firebase/firestore';
+import { supabase, isMockMode } from './supabase';
 
-const COLLECTION_NAME = 'companies';
+const COMPANIES_TABLE = 'companies';
 
 const INITIAL_COMPANIES: Company[] = [
     {
@@ -16,37 +15,69 @@ const INITIAL_COMPANIES: Company[] = [
         usedCredit: 1250,
         logoUrl: 'https://ui-avatars.com/api/?name=Tech+Solutions&background=0D8ABC&color=fff' // Default
     },
-    {
-        id: 'comp_002',
-        name: 'Logística Express',
-        cnpj: '98.765.432/0001-10',
-        email: 'contato@logex.com',
-        status: 'active',
-        address: 'Rua das Flores, 500 - RJ',
-        creditLimit: 2000,
-        usedCredit: 1980,
-        logoUrl: 'https://ui-avatars.com/api/?name=Log+Express&background=ff0000&color=fff'
-    },
-    {
-        id: 'comp_003',
-        name: 'Terapimax',
-        cnpj: '30.278.186/0001-06',
-        email: 'contato@terapimax.com.br',
-        status: 'active',
-        address: 'Endereço da Terapimax',
-        creditLimit: 100,
-        usedCredit: 0,
-        logoUrl: 'https://ui-avatars.com/api/?name=Terapimax&background=random&color=fff'
-    }
+    // ... keep other mocks if needed
 ];
 
-// Helper for Mock Mode
+// Helpers
+const mapToAppCompany = (data: any): Company => {
+    if (!data) return data;
+    return {
+        ...data,
+        creditLimit: data.credit_limit,
+        usedCredit: data.used_credit,
+        logoUrl: data.logo_url,
+        contractUrl: data.contract_url,
+        ownerUid: data.owner_uid,
+        tradeName: data.trade_name,
+        stateInscription: data.state_inscription,
+        financialManager: data.financial_manager,
+        financialManagerPhone: data.financial_manager_phone,
+        isTempPassword: data.is_temp_password,
+        passwordHash: data.password_hash,
+        allowInvoicing: data.allow_invoicing,
+        addressComponents: data.address_components
+    };
+};
+
+const mapToDbCompany = (data: Partial<Company>): any => {
+    const mapped: any = { ...data };
+
+    if (data.creditLimit !== undefined) mapped.credit_limit = data.creditLimit;
+    if (data.usedCredit !== undefined) mapped.used_credit = data.usedCredit;
+    if (data.logoUrl !== undefined) mapped.logo_url = data.logoUrl;
+    if (data.contractUrl !== undefined) mapped.contract_url = data.contractUrl;
+    if (data.ownerUid !== undefined) mapped.owner_uid = data.ownerUid;
+    if (data.tradeName !== undefined) mapped.trade_name = data.tradeName;
+    if (data.stateInscription !== undefined) mapped.state_inscription = data.stateInscription;
+    if (data.financialManager !== undefined) mapped.financial_manager = data.financialManager;
+    if (data.financialManagerPhone !== undefined) mapped.financial_manager_phone = data.financialManagerPhone;
+    if (data.isTempPassword !== undefined) mapped.is_temp_password = data.isTempPassword;
+    if (data.passwordHash !== undefined) mapped.password_hash = data.passwordHash;
+    if (data.allowInvoicing !== undefined) mapped.allow_invoicing = data.allowInvoicing;
+    if (data.addressComponents !== undefined) mapped.address_components = data.addressComponents;
+
+    delete mapped.creditLimit;
+    delete mapped.usedCredit;
+    delete mapped.logoUrl;
+    delete mapped.contractUrl;
+    delete mapped.ownerUid;
+    delete mapped.tradeName;
+    delete mapped.stateInscription;
+    delete mapped.financialManager;
+    delete mapped.financialManagerPhone;
+    delete mapped.isTempPassword;
+    delete mapped.passwordHash;
+    delete mapped.allowInvoicing;
+    delete mapped.addressComponents;
+
+    return mapped;
+};
+
 const getMockData = (): Company[] => {
-    const stored = JSON.parse(localStorage.getItem('motoja_mock_companies') || '[]');
-    if (stored.length === 0) {
-        return INITIAL_COMPANIES;
-    }
-    return stored.length > 0 ? stored : INITIAL_COMPANIES;
+    try {
+        const stored = JSON.parse(localStorage.getItem('motoja_mock_companies') || '[]');
+        return stored.length > 0 ? stored : INITIAL_COMPANIES;
+    } catch { return INITIAL_COMPANIES; }
 };
 
 const saveMockData = (companies: Company[]) => {
@@ -54,70 +85,78 @@ const saveMockData = (companies: Company[]) => {
 };
 
 export const getCompany = async (companyId: string): Promise<Company | null> => {
-    if (!db) {
+    if (isMockMode || !supabase) {
         const companies = getMockData();
         return companies.find(c => c.id === companyId) || null;
     }
-    try {
-        const docRef = doc(db, COLLECTION_NAME, companyId);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-            return docSnap.data() as Company;
-        }
-        return null;
-    } catch (error) {
+    const { data, error } = await supabase
+        .from(COMPANIES_TABLE)
+        .select('*')
+        .eq('id', companyId)
+        .single();
+
+    if (error) {
         console.error("Error fetching company:", error);
         return null;
     }
+    return mapToAppCompany(data);
 };
 
 export const saveCompany = async (company: Company): Promise<void> => {
-    if (!db) {
+    if (isMockMode || !supabase) {
         const companies = getMockData();
         const index = companies.findIndex(c => c.id === company.id);
-        if (index >= 0) {
-            companies[index] = company;
-        } else {
-            companies.push(company);
-        }
+        if (index >= 0) companies[index] = company;
+        else companies.push(company);
         saveMockData(companies);
         return;
     }
-    try {
-        await setDoc(doc(db, COLLECTION_NAME, company.id), company);
-    } catch (error) {
+
+    const dbData = mapToDbCompany(company);
+    // Use upsert
+    const { error } = await supabase
+        .from(COMPANIES_TABLE)
+        .upsert(dbData);
+
+    if (error) {
         console.error("Error saving company:", error);
         throw error;
     }
 };
 
 export const subscribeToCompanies = (callback: (companies: Company[]) => void) => {
-    if (!db) {
-        // Mock subscription
-        const companies = getMockData();
-        callback(companies);
+    if (isMockMode || !supabase) {
+        callback(getMockData());
         return () => { };
     }
 
-    const q = query(collection(db, COLLECTION_NAME));
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-        const companies: Company[] = [];
-        querySnapshot.forEach((doc) => {
-            companies.push(doc.data() as Company);
-        });
-        callback(companies);
-    });
+    const fetchAll = () => {
+        supabase
+            .from(COMPANIES_TABLE)
+            .select('*')
+            .then(({ data }) => {
+                if (data) callback(data.map(mapToAppCompany));
+            });
+    };
 
-    return unsubscribe;
+    fetchAll();
+
+    const channel = supabase
+        .channel('companies_list')
+        .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: COMPANIES_TABLE },
+            () => fetchAll()
+        )
+        .subscribe();
+
+    return () => channel.unsubscribe();
 };
 
-// Legacy support for mock data
-export const getMockCompanies = (): Company[] => {
-    return getMockData();
-};
+export const getMockCompanies = (): Company[] => getMockData();
 
 export const updateCompanyStatus = async (companyId: string, status: 'active' | 'blocked' | 'pending') => {
-    if (!db) {
+    if (isMockMode || !supabase) {
         const companies = getMockData();
         const company = companies.find(c => c.id === companyId);
         if (company) {
@@ -126,59 +165,35 @@ export const updateCompanyStatus = async (companyId: string, status: 'active' | 
         }
         return;
     }
-    try {
-        const docRef = doc(db, COLLECTION_NAME, companyId);
-        await updateDoc(docRef, { status });
-    } catch (error) {
-        console.error("Error updating company status:", error);
-    }
+    await supabase.from(COMPANIES_TABLE).update({ status }).eq('id', companyId);
 };
 
 export const deleteCompany = async (companyId: string): Promise<void> => {
-    if (!db) {
+    if (isMockMode || !supabase) {
         const companies = getMockData();
-        const filtered = companies.filter(c => c.id !== companyId);
-        saveMockData(filtered);
+        saveMockData(companies.filter(c => c.id !== companyId));
         return;
     }
-    try {
-        const { deleteDoc } = await import('firebase/firestore');
-        await deleteDoc(doc(db, COLLECTION_NAME, companyId));
-    } catch (error) {
-        console.error("Error deleting company:", error);
-        throw error;
-    }
+
+    const { error } = await supabase.from(COMPANIES_TABLE).delete().eq('id', companyId);
+    if (error) throw error;
 };
 
 export const getCompanyByOwner = async (ownerUid: string): Promise<Company | null> => {
-    console.log('[getCompanyByOwner] Searching for ownerUid:', ownerUid);
-
-    if (!db) {
+    if (isMockMode || !supabase) {
         const companies = getMockData();
-        console.log('[getCompanyByOwner] Mock companies:', companies.map(c => ({ id: c.id, ownerUid: c.ownerUid, email: c.email })));
-
-        // First try to find by ownerUid
         let found = companies.find(c => c.ownerUid === ownerUid);
-
-        // If not found, try to find by ID (in case ID === ownerUid)
-        if (!found) {
-            found = companies.find(c => c.id === ownerUid);
-        }
-
-        console.log('[getCompanyByOwner] Found:', found ? found.name : 'null');
+        if (!found) found = companies.find(c => c.id === ownerUid);
         return found || null;
     }
-    try {
-        const q = query(collection(db, COLLECTION_NAME), where('ownerUid', '==', ownerUid));
-        const querySnapshot = await getDocs(q);
-        if (!querySnapshot.empty) {
-            return querySnapshot.docs[0].data() as Company;
-        }
-        return null;
-    } catch (error) {
-        console.error("Error fetching company by owner:", error);
-        return null;
-    }
+
+    const { data } = await supabase
+        .from(COMPANIES_TABLE)
+        .select('*')
+        .eq('owner_uid', ownerUid)
+        .single();
+
+    return mapToAppCompany(data);
 };
 
 export const canBookCorporateRide = (company: Company, estimatedPrice: number): boolean => {
@@ -187,68 +202,41 @@ export const canBookCorporateRide = (company: Company, estimatedPrice: number): 
     return availableCredit >= estimatedPrice;
 };
 
-// Helper for exposing all companies (Mock or Firestore)
 export const getAllCompanies = async (): Promise<Company[]> => {
-    if (!db) {
-        return getMockData();
-    }
-    try {
-        const q = query(collection(db, COLLECTION_NAME));
-        const querySnapshot = await getDocs(q);
-        return querySnapshot.docs.map(doc => doc.data() as Company);
-    } catch (error) {
-        console.error("Error fetching all companies:", error);
-        return [];
-    }
+    if (isMockMode || !supabase) return getMockData();
+
+    const { data } = await supabase.from(COMPANIES_TABLE).select('*');
+    return (data || []).map(mapToAppCompany);
 };
 
 export const findCompanyByIdentifier = async (identifier: string): Promise<Company | null> => {
-    const cleanId = identifier.replace(/\D/g, ''); // For CNPJ check
     const isEmail = identifier.includes('@');
 
-    if (!db) {
+    if (isMockMode || !supabase) {
         const companies = getMockData();
         return companies.find(c =>
             c.email.toLowerCase() === identifier.toLowerCase() ||
-            c.cnpj.replace(/\D/g, '') === cleanId
+            c.cnpj === identifier
         ) || null;
     }
 
-    try {
-        // Try to find by Email
-        let q = query(collection(db, COLLECTION_NAME), where('email', '==', identifier));
-        let snapshot = await getDocs(q);
-
-        if (!snapshot.empty) return snapshot.docs[0].data() as Company;
-
-        // If not found and it looks like a CNPJ (digits only/mostly), try CNPJ
-        // Firestore doesn't support OR queries officially in V8/simple SDKs easily without 'or' operator,
-        // so sequential checks are safer for this context.
-        if (!isEmail) {
-            // Try strict CNPJ match if stored with formatting
-            q = query(collection(db, COLLECTION_NAME), where('cnpj', '==', identifier));
-            snapshot = await getDocs(q);
-            if (!snapshot.empty) return snapshot.docs[0].data() as Company;
-        }
-
-        // Fallback: iterate all (expensive but safe for small datasets if exact match fails)
-        // In production, maintain a 'cleanCnpj' field. For now, we rely on exact email match mostly.
-        return null;
-    } catch (error) {
-        console.error("Error finding company:", error);
-        return null;
+    let query = supabase.from(COMPANIES_TABLE).select('*');
+    if (isEmail) {
+        query = query.eq('email', identifier);
+    } else {
+        query = query.eq('cnpj', identifier);
     }
+
+    const { data } = await query.single();
+    return mapToAppCompany(data);
 };
 
 export const checkCompanyExists = async (cnpj: string): Promise<boolean> => {
-    if (isMockMode || !db) return false;
+    if (isMockMode || !supabase) return false;
+    const { count } = await supabase
+        .from(COMPANIES_TABLE)
+        .select('id', { count: 'exact', head: true })
+        .eq('cnpj', cnpj);
 
-    try {
-        const q = query(collection(db, COLLECTION_NAME), where('cnpj', '==', cnpj));
-        const snapshot = await getDocs(q);
-        return !snapshot.empty;
-    } catch (e) {
-        console.error("Error checking company existence", e);
-        return false;
-    }
+    return (count || 0) > 0;
 };

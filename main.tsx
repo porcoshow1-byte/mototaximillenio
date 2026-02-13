@@ -4,7 +4,7 @@ import App from './App';
 import { Loader2, AlertTriangle } from 'lucide-react';
 
 // Error Boundary para capturar falhas críticas e evitar tela branca
-class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: any}> {
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: any }> {
   state = { hasError: false, error: null };
 
   static getDerivedStateFromError(error: any) {
@@ -30,7 +30,7 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasErr
             <div className="bg-gray-100 p-3 rounded-lg text-left text-xs font-mono text-red-600 overflow-auto max-h-32 mb-6">
               {this.state.error?.message || 'Erro desconhecido'}
             </div>
-            <button 
+            <button
               onClick={() => window.location.reload()}
               className="w-full py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold transition-colors"
             >
@@ -41,7 +41,8 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasErr
       );
     }
 
-    return this.props.children;
+    // @ts-ignore
+    return (this as any).props.children;
   }
 }
 
@@ -58,3 +59,16 @@ root.render(
     </ErrorBoundary>
   </React.StrictMode>
 );
+
+// Register Service Worker for PWA & Notifications
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(registration => {
+        console.log('SW registered: ', registration);
+      })
+      .catch(registrationError => {
+        console.log('SW registration failed: ', registrationError);
+      });
+  });
+}

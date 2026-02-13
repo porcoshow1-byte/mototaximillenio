@@ -1,5 +1,5 @@
 import React from 'react';
-import { Loader2, Eye, EyeOff } from 'lucide-react';
+import { Loader2, Eye, EyeOff, Info } from 'lucide-react';
 
 export const Button = ({
   children,
@@ -52,6 +52,7 @@ export const Input = ({
   icon,
   readOnly = false,
   className = '',
+  error,
   ...props
 }: {
   label?: string;
@@ -62,14 +63,16 @@ export const Input = ({
   icon?: React.ReactNode;
   readOnly?: boolean;
   className?: string;
+  error?: string;
 } & React.InputHTMLAttributes<HTMLInputElement>) => {
   const [showPassword, setShowPassword] = React.useState(false);
   const isPassword = type === 'password';
   const inputType = isPassword ? (showPassword ? 'text' : 'password') : type;
+  const hasError = !!error;
 
   return (
     <div className={`w-full ${className}`}>
-      {label && <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>}
+      {label && <label className={`block text-sm font-medium mb-1 ${hasError ? 'text-red-600' : 'text-gray-700'}`}>{label}</label>}
       <div className="relative">
         <input
           type={inputType}
@@ -77,11 +80,14 @@ export const Input = ({
           onChange={onChange}
           placeholder={placeholder}
           readOnly={readOnly}
-          className={`w-full p-3 ${icon ? 'pl-10' : ''} ${isPassword ? 'pr-12' : ''} bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all ${readOnly ? 'opacity-70 cursor-not-allowed' : ''}`}
+          className={`w-full p-3 ${icon ? 'pl-10' : ''} ${isPassword ? 'pr-12' : ''} bg-gray-50 border rounded-xl outline-none transition-all ${hasError
+            ? 'border-red-500 focus:ring-2 focus:ring-red-400 focus:border-transparent bg-red-50/30'
+            : 'border-gray-200 focus:ring-2 focus:ring-orange-500 focus:border-transparent'
+            } ${readOnly ? 'opacity-70 cursor-not-allowed' : ''}`}
           {...props}
         />
         {icon && (
-          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+          <div className={`absolute left-3 top-1/2 -translate-y-1/2 ${hasError ? 'text-red-400' : 'text-gray-400'}`}>
             {icon}
           </div>
         )}
@@ -95,6 +101,12 @@ export const Input = ({
           </button>
         )}
       </div>
+      {hasError && (
+        <p className="mt-1 text-xs font-medium text-red-600 flex items-center gap-1">
+          <svg className="w-3 h-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+          {error}
+        </p>
+      )}
     </div>
   );
 };

@@ -149,6 +149,9 @@ export interface RideRequest {
   startedAt?: number;
   completedAt?: number;
   cancelledAt?: number;
+  cancellationReason?: string;
+  cancellationFee?: number;
+  cancelledBy?: 'passenger' | 'driver' | 'admin' | 'system';
 
   // Payment Details
   paymentMethod?: PaymentMethod;
@@ -162,6 +165,10 @@ export interface RideRequest {
     contactPhone: string;
     instructions?: string;
   };
+
+  // Dispatch Logic
+  candidateDriverId?: string;
+  rejectedDriverIds?: string[];
 }
 
 export interface ChatMessage {
@@ -170,6 +177,7 @@ export interface ChatMessage {
   senderId: string;
   text: string;
   createdAt: number;
+  status?: 'sent' | 'delivered' | 'read'; // Added for WhatsApp-style ticks
 }
 
 export interface AdminStats {
@@ -206,4 +214,15 @@ export interface Occurrence {
     attachmentUrl?: string;
   }>;
   status: 'pending' | 'resolved' | 'investigating';
+}
+
+export interface Review {
+  id: string;
+  rideId: string;
+  reviewerId: string;
+  reviewerName: string; // Denormalized for ease
+  reviewedId: string;
+  rating: number; // 1-5
+  comment?: string;
+  createdAt: number;
 }

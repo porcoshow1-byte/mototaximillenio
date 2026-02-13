@@ -1,16 +1,18 @@
-import { db, isMockMode } from './firebase';
-import { collection, addDoc, updateDoc, doc, query, onSnapshot, orderBy, serverTimestamp, getDocs } from 'firebase/firestore';
-
+import { supabase, isMockMode } from './supabase';
 import { triggerN8NWebhook } from './n8n';
 
 export type TicketType = 'ride_issue' | 'payment' | 'feedback' | 'support_request' | 'vehicle_issue' | 'other';
-// ... existing types
-
-// ... existing code
-
-// ... existing types
 export type TicketStatus = 'pending' | 'in_progress' | 'resolved' | 'closed';
 export type UrgencyLevel = 'low' | 'medium' | 'high' | 'critical';
+
+export interface TicketComment {
+    id: string;
+    authorId: string;
+    authorName: string;
+    content: string;
+    createdAt: number;
+    isAdmin: boolean;
+}
 
 export interface SupportTicket {
     id: string;
@@ -22,10 +24,10 @@ export interface SupportTicket {
     userId: string;
     userName: string;
     userRole: 'driver' | 'passenger';
-    createdAt: number | any; // Timestamp
-    updatedAt: number | any;
+    createdAt: number;
+    updatedAt: number;
     rideId?: string;
-    read: boolean; // For admin unread badging
+    read: boolean;
     comments?: TicketComment[];
     rideDetails?: {
         rideId: string;
@@ -34,19 +36,56 @@ export interface SupportTicket {
         date: number;
         price: number;
     };
-    attachments?: string[]; // URLs or base64
+    attachments?: string[];
 }
 
-export interface TicketComment {
-    id: string;
-    authorId: string;
-    authorName: string;
-    content: string;
-    createdAt: number;
-    isAdmin: boolean;
-}
+const TABLE_NAME = 'support_tickets';
 
-const COLLECTION_NAME = 'support_tickets';
+// Helpers
+const mapToAppTicket = (data: any): SupportTicket => {
+    return {
+        id: data.id,
+        type: data.type,
+        status: data.status,
+        urgency: data.urgency,
+        title: data.title,
+        description: data.description,
+        userId: data.user_id,
+        userName: data.user_name,
+        userRole: data.user_role,
+        rideId: data.ride_id,
+        read: data.read,
+        comments: data.comments, // JSONB
+        rideDetails: data.ride_details, // JSONB
+        attachments: data.attachments, // Array
+        createdAt: data.created_at ? new Date(data.created_at).getTime() : Date.now(),
+        updatedAt: data.updated_at ? new Date(data.updated_at).getTime() : Date.now(),
+    };
+};
+
+const mapToDbTicket = (data: Partial<SupportTicket>): any => {
+    const mapped: any = { ...data };
+
+    if (data.userId) mapped.user_id = data.userId;
+    if (data.userName) mapped.user_name = data.userName;
+    if (data.userRole) mapped.user_role = data.userRole;
+    if (data.rideId) mapped.ride_id = data.rideId;
+    if (data.rideDetails) mapped.ride_details = data.rideDetails;
+    // status, urgency, title, description, read, comments, attachments match
+
+    delete mapped.userId;
+    delete mapped.userName;
+    delete mapped.userRole;
+    delete mapped.rideId;
+    delete mapped.rideDetails;
+
+    // Supabase handles generated cols
+    delete mapped.id;
+    delete mapped.createdAt;
+    delete mapped.updatedAt;
+
+    return mapped;
+};
 
 // MOCK DATA STORAGE
 const getMockTickets = (): SupportTicket[] => {
@@ -59,16 +98,15 @@ const saveMockTickets = (tickets: SupportTicket[]) => {
 };
 
 export const createSupportTicket = async (ticketData: Omit<SupportTicket, 'id' | 'createdAt' | 'updatedAt' | 'read' | 'status'>) => {
-    const newTicket: SupportTicket = {
-        ...ticketData,
-        id: isMockMode ? `ticket_${Date.now()}` : '', // ID assigned later for firestore
-        status: 'pending',
-        read: false,
-        createdAt: isMockMode ? Date.now() : serverTimestamp(),
-        updatedAt: isMockMode ? Date.now() : serverTimestamp(),
-    };
-
-    if (isMockMode || !db) {
+    if (isMockMode || !supabase) {
+        const newTicket: SupportTicket = {
+            ...ticketData,
+            id: `ticket_${Date.now()}`,
+            status: 'pending',
+            read: false,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+        };
         const tickets = getMockTickets();
         tickets.push(newTicket);
         saveMockTickets(tickets);
@@ -76,53 +114,75 @@ export const createSupportTicket = async (ticketData: Omit<SupportTicket, 'id' |
         return newTicket;
     }
 
-    try {
-        // Remove id for addDoc (it generates one)
-        const { id, ...data } = newTicket;
-        const docRef = await addDoc(collection(db, COLLECTION_NAME), data);
-        triggerN8NWebhook('support_ticket_created', { ...newTicket, id: docRef.id });
-        return { ...newTicket, id: docRef.id };
-    } catch (error) {
+    const dbData = mapToDbTicket({
+        ...ticketData,
+        status: 'pending',
+        read: false
+    });
+
+    const { data, error } = await supabase
+        .from(TABLE_NAME)
+        .insert(dbData)
+        .select()
+        .single();
+
+    if (error) {
         console.error("Error creating ticket:", error);
         throw error;
     }
+
+    const createdTicket = mapToAppTicket(data);
+    triggerN8NWebhook('support_ticket_created', createdTicket);
+    return createdTicket;
 };
 
 export const subscribeToTickets = (callback: (tickets: SupportTicket[]) => void) => {
-    if (isMockMode || !db) {
-        // Mock subscription polling
-        const interval = setInterval(() => {
-            callback(getMockTickets());
-        }, 3000); // Poll every 3s for mock
-        callback(getMockTickets()); // Initial call
-        return () => clearInterval(interval);
+    if (isMockMode || !supabase) {
+        callback(getMockTickets());
+        return () => { };
     }
 
-    const q = query(collection(db, COLLECTION_NAME), orderBy('createdAt', 'desc'));
-    return onSnapshot(q, (snapshot) => {
-        const tickets = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        } as SupportTicket));
-        callback(tickets);
-    });
+    const fetchAll = () => {
+        supabase
+            .from(TABLE_NAME)
+            .select('*')
+            .order('created_at', { ascending: false })
+            .then(({ data }) => {
+                if (data) callback(data.map(mapToAppTicket));
+            });
+    };
+
+    fetchAll();
+
+    const channel = supabase
+        .channel('support_tickets_list')
+        .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: TABLE_NAME },
+            () => fetchAll()
+        )
+        .subscribe();
+
+    return () => channel.unsubscribe();
 };
 
 export const updateTicketStatus = async (ticketId: string, status: TicketStatus) => {
-    if (isMockMode || !db) {
+    if (isMockMode || !supabase) {
         const tickets = getMockTickets();
         const ticket = tickets.find(t => t.id === ticketId);
         if (ticket) {
             ticket.status = status;
             ticket.updatedAt = Date.now();
-            ticket.read = true; // Mark as read when interacting
+            ticket.read = true;
             saveMockTickets(tickets);
         }
         return;
     }
 
-    const docRef = doc(db, COLLECTION_NAME, ticketId);
-    await updateDoc(docRef, { status, read: true, updatedAt: serverTimestamp() });
+    await supabase
+        .from(TABLE_NAME)
+        .update({ status, read: true })
+        .eq('id', ticketId);
 };
 
 export const addTicketComment = async (ticketId: string, comment: Omit<TicketComment, 'id' | 'createdAt'>) => {
@@ -132,7 +192,7 @@ export const addTicketComment = async (ticketId: string, comment: Omit<TicketCom
         createdAt: Date.now()
     };
 
-    if (isMockMode || !db) {
+    if (isMockMode || !supabase) {
         const tickets = getMockTickets();
         const ticket = tickets.find(t => t.id === ticketId);
         if (ticket) {
@@ -143,12 +203,70 @@ export const addTicketComment = async (ticketId: string, comment: Omit<TicketCom
         return;
     }
 
-    const docRef = doc(db, COLLECTION_NAME, ticketId);
-    const snapshot = await getDocs(query(collection(db, COLLECTION_NAME))); // Inefficient read just to update array, but simple for now
-    // Actually for Firestore array updates we normally use arrayUnion, but here we'll just read-update for simplicity or define subcollection.
-    // Let's stick to array update via getDoc for now to keep it simple without subcollections logic complexity
-    // ... ignoring proper firestore array update for brevity, assume simple field update if tickets were standard docs
-    // Real implementation would likely use a subcollection 'comments'.
-    // For this prototype, let's assume 'comments' is a field.
-    // Note: getDoc + update is susceptible to race conditions, but acceptable for prototype.
+    // 1. Get current comments
+    const { data: ticket } = await supabase
+        .from(TABLE_NAME)
+        .select('comments')
+        .eq('id', ticketId)
+        .single();
+
+    const currentComments: any[] = ticket?.comments || [];
+    const updatedComments = [...currentComments, newComment];
+
+    // 2. Update
+    await supabase
+        .from(TABLE_NAME)
+        .update({ comments: updatedComments })
+        .eq('id', ticketId);
+};
+
+export const getDriverTickets = async (driverId: string): Promise<SupportTicket[]> => {
+    if (isMockMode || !supabase) {
+        // Return some mock tickets mixed with user's own
+        const tickets = getMockTickets();
+        // Mock: Filter by userId or just return some for demo
+        return tickets.length > 0 ? tickets : [
+            {
+                id: 't_mock_1',
+                type: 'vehicle_issue',
+                status: 'resolved',
+                urgency: 'medium',
+                title: 'Problema na vistoria',
+                description: 'Minha foto não foi aceita.',
+                userId: driverId,
+                userName: 'Motorista',
+                userRole: 'driver',
+                createdAt: Date.now() - 86400000,
+                updatedAt: Date.now(),
+                read: true
+            },
+            {
+                id: 't_mock_2',
+                type: 'ride_issue',
+                status: 'in_progress',
+                urgency: 'high',
+                title: 'Passageiro não pagou',
+                description: 'Corrida #1234 finalizada sem pagamento.',
+                userId: driverId,
+                userName: 'Motorista',
+                userRole: 'driver',
+                createdAt: Date.now() - 172800000,
+                updatedAt: Date.now(),
+                read: false
+            }
+        ];
+    }
+
+    const { data, error } = await supabase
+        .from(TABLE_NAME)
+        .select('*')
+        .or(`user_id.eq.${driverId}, ride_details->>driverId.eq.${driverId}`) // Fetch created by me OR involving me
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('Error fetching driver tickets:', error);
+        return [];
+    }
+
+    return data.map(mapToAppTicket);
 };

@@ -71,7 +71,7 @@ export const useToast = () => {
     return context;
 };
 
-export const ToastItem = ({ toast, onRemove }: { toast: Toast; onRemove: () => void }) => {
+export const ToastItem: React.FC<{ toast: Toast; onRemove: () => void; key?: string }> = ({ toast, onRemove }) => {
     const [isExiting, setIsExiting] = useState(false);
 
     const handleRemove = () => {

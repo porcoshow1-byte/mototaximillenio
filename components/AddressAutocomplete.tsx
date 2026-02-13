@@ -2,16 +2,19 @@ import React, { useState, useEffect, useRef } from 'react';
 import { MapPin, Search, Loader2 } from 'lucide-react';
 import { searchAddress, getPlaceDetails, geocodeExactAddress } from '../services/map';
 
-interface Props {
+type Coords = { lat: number; lng: number };
+
+interface AddressAutocompleteProps {
   value: string;
   onChange: (value: string) => void;
   onSelect: (address: string, coords: { lat: number; lng: number }) => void;
   placeholder?: string;
-  userLocation?: { lat: number; lng: number } | null;
+  userLocation?: Coords | null;
   leftIcon?: React.ReactNode;
+  readOnly?: boolean;
 }
 
-export const AddressAutocomplete = ({ value, onChange, onSelect, placeholder, userLocation, leftIcon }: Props) => {
+export const AddressAutocomplete = ({ value, onChange, onSelect, placeholder, userLocation, leftIcon, readOnly = false }: AddressAutocompleteProps) => {
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);

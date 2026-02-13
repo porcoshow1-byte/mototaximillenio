@@ -19,26 +19,55 @@ export const useGeoLocation = () => {
         }
       }
 
+      // Try High Accuracy with short timeout first
+      try {
+        const position = await Geolocation.getCurrentPosition({
+          enableHighAccuracy: true,
+          timeout: 5000,
+          maximumAge: 0
+        });
+        setLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
+        setLoading(false);
+        return;
+      } catch (e) {
+        console.log("High accuracy GPS failed, trying low accuracy...");
+      }
+
+      // Fallback: Low Accuracy (faster, less precise but good enough for initial load)
       const position = await Geolocation.getCurrentPosition({
-        enableHighAccuracy: true,
-        timeout: 20000,
-        maximumAge: 0
+        enableHighAccuracy: false,
+        timeout: 10000,
+        maximumAge: 30000 // Accept cached positions up to 30s old
       });
 
       setLocation({
         lat: position.coords.latitude,
         lng: position.coords.longitude
       });
-      setAccuracy(position.coords.accuracy);
       setLoading(false);
+
     } catch (err: any) {
       console.warn("Erro ao obter localização (Native/Web):", err);
-      // ... existing error handling
+      // Fallback to default center if absolutely everything fails
+      setLocation({ lat: -23.5505, lng: -46.6333 }); // SP Check
+      setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     getCurrentLocation();
+
+    // FAILSAFE: Force stop loading after 8 seconds (Desktop/Permission hang protection)
+    const failsafe = setTimeout(() => {
+      setLoading(l => {
+        if (l) {
+          console.warn("GPS timed out (Failsafe triggered)");
+          setLocation({ lat: -23.5505, lng: -46.6333 }); // SP Default
+          return false;
+        }
+        return l;
+      });
+    }, 8000);
 
     let watcherId: string | number | null = null;
     const startWatcher = async () => {

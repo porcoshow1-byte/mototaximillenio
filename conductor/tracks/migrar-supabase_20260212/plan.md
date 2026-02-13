@@ -1,0 +1,150 @@
+# Implementation Plan: Migração Firebase → Supabase
+
+**Track ID:** migrar-supabase_20260212
+**Spec:** [spec.md](./spec.md)
+**Created:** 2026-02-12
+**Status:** [ ] Not Started
+
+## Overview
+
+Migração em 6 fases, do mais fundamental (config + auth) ao mais específico (chat, GPS, storage). Cada fase é independentemente verificável.
+
+---
+
+## Phase 1: Setup Supabase + Client
+
+Configurar o projeto Supabase, criar o client TypeScript e definir variáveis de ambiente.
+
+### Tasks
+
+- [ ] Task 1.1: Criar `services/supabase.ts` com client Supabase (similar ao `firebase.ts`)
+- [ ] Task 1.2: Adicionar variáveis de ambiente ao `.env` (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`)
+- [ ] Task 1.3: Instalar `@supabase/supabase-js`
+- [ ] Task 1.4: Criar schema SQL para todas as tabelas (users, rides, companies, settings, support_tickets, occurrences)
+- [ ] Task 1.5: Configurar RLS (Row Level Security) básico para cada tabela
+
+### Verification
+
+- [ ] Client Supabase conecta com sucesso
+- [ ] Tabelas criadas no dashboard Supabase
+- [ ] Build sem erros
+
+---
+
+## Phase 2: Migrar Autenticação (Auth)
+
+Substituir Firebase Auth por Supabase Auth em `auth.ts` e ajustar `App.tsx`.
+
+### Tasks
+
+- [ ] Task 2.1: Reescrever `services/auth.ts` — login, register, logout com Supabase Auth
+- [ ] Task 2.2: Reescrever `observeAuthState` usando `supabase.auth.onAuthStateChange()`
+- [ ] Task 2.3: Atualizar `App.tsx` para usar novo auth provider
+- [ ] Task 2.4: Atualizar `AuthScreen.tsx` para usar novo auth
+- [ ] Task 2.5: Manter mock mode funcional
+
+### Verification
+
+- [ ] Login com email/senha funciona
+- [ ] Registro de novo usuário funciona
+- [ ] Logout funciona
+- [ ] Sessão persiste ao recarregar página
+- [ ] Mock mode continua funcionando
+
+---
+
+## Phase 3: Migrar Dados Principais (Firestore → PostgreSQL)
+
+Migrar os serviços de dados que usam Firestore para queries Supabase.
+
+### Tasks
+
+- [ ] Task 3.1: Reescrever `services/user.ts` — CRUD perfis, sessões, validação de unicidade
+- [ ] Task 3.2: Reescrever `services/ride.ts` — criar/aceitar/iniciar/completar/cancelar corridas
+- [ ] Task 3.3: Reescrever `services/ride.ts` — subscriptions (subscribeToPendingRides, subscribeToRide)
+- [ ] Task 3.4: Reescrever `services/company.ts` — CRUD empresas, subscriptions
+- [ ] Task 3.5: Reescrever `services/admin.ts` — fetchDashboardData, ocorrências
+- [ ] Task 3.6: Reescrever `services/settings.ts` — get/save/subscribe settings
+- [ ] Task 3.7: Reescrever `services/support.ts` — tickets, comments
+- [ ] Task 3.8: Reescrever `services/constraints.ts`
+
+### Verification
+
+- [ ] Criação e listagem de corridas funciona
+- [ ] Dashboard admin carrega dados corretamente
+- [ ] Settings salvam e carregam do Supabase
+- [ ] Subscriptions em tempo real funcionam
+
+---
+
+## Phase 4: Migrar Realtime (Chat + GPS)
+
+Migrar chat (RTDB) para Supabase Realtime e GPS tracking para Broadcast.
+
+### Tasks
+
+- [ ] Task 4.1: Reescrever `services/chat.ts` — sendMessage, subscribeToChat via Supabase Realtime
+- [ ] Task 4.2: Reescrever `updateDriverLocation` em `ride.ts` — GPS via Broadcast Channel
+- [ ] Task 4.3: Reescrever listener de GPS no `subscribeToRide` — receber via Broadcast
+- [ ] Task 4.4: Atualizar `services/simulation.ts` para usar Supabase
+
+### Verification
+
+- [ ] Enviar e receber mensagens de chat funciona em tempo real
+- [ ] Localização do piloto atualiza no mapa do passageiro
+- [ ] Simulação de corrida funciona
+
+---
+
+## Phase 5: Migrar Storage
+
+Migrar upload de arquivos de Firebase Storage para Supabase Storage.
+
+### Tasks
+
+- [ ] Task 5.1: Criar buckets no Supabase Storage (avatars, documents, campaigns)
+- [ ] Task 5.2: Reescrever `services/storage.ts` — uploadFile com Supabase Storage
+- [ ] Task 5.3: Manter compressImage inalterado (não depende do Firebase)
+- [ ] Task 5.4: Atualizar referências de upload nas telas (ProfileScreen, AuthScreen, AdminDashboard)
+
+### Verification
+
+- [ ] Upload de avatar funciona
+- [ ] Upload de CNH funciona
+- [ ] Upload de imagens de campanha funciona
+- [ ] Mock mode (base64) continua funcional
+
+---
+
+## Phase 6: Limpeza + Remoção do Firebase
+
+Remover todas as dependências Firebase e limpar o código.
+
+### Tasks
+
+- [ ] Task 6.1: Remover `services/firebase.ts`
+- [ ] Task 6.2: Remover imports do Firebase em todos os arquivos
+- [ ] Task 6.3: Remover pacotes Firebase do `package.json` (firebase, @firebase/*)
+- [ ] Task 6.4: Remover variáveis de ambiente Firebase do `.env`
+- [ ] Task 6.5: Atualizar `DEPLOY.md` com novas variáveis de ambiente
+- [ ] Task 6.6: Atualizar `conductor/tech-stack.md` para refletir stack final
+
+### Verification
+
+- [ ] `npm run build` sem erros
+- [ ] Zero referências a Firebase no código
+- [ ] App funciona end-to-end sem Firebase
+
+---
+
+## Final Verification
+
+- [ ] Todos os acceptance criteria do spec atendidos
+- [ ] Build sem erros
+- [ ] Fluxo completo: registro → login → solicitar corrida → aceitar → chat → rastrear GPS → completar → pagar
+- [ ] Mock mode funcional
+- [ ] Dashboard admin operacional
+
+---
+
+_Generated by Conductor. Tasks will be marked [~] in progress and [x] complete._

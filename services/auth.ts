@@ -1,20 +1,20 @@
-import {
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signOut as firebaseSignOut,
-  onAuthStateChanged,
-  updatePassword,
-  User as FirebaseUser
-} from 'firebase/auth';
-import { auth, isMockMode } from './firebase';
+import { User } from '@supabase/supabase-js';
+import { supabase, isMockMode } from './supabase';
 
-type AuthCallback = (user: FirebaseUser | any | null) => void;
+// Tipo de callback para observadores
+type AuthCallback = (user: UserWithUID | null) => void;
+
+// Supabase User type doesn't have 'uid', but our app uses 'uid' everywhere.
+// We extend the type to include 'uid' as an alias for 'id'.
+export interface UserWithUID extends User {
+  uid: string;
+}
 
 // Lista de observadores para o modo Mock
 const mockObservers: AuthCallback[] = [];
 
 // Notifica todos os observadores quando o estado muda no modo Mock
-const notifyObservers = (user: any) => {
+const notifyObservers = (user: UserWithUID | null) => {
   mockObservers.forEach(cb => cb(user));
 };
 
@@ -27,15 +27,24 @@ const generateMockUid = (email: string) => {
   }
 };
 
-export const observeAuthState = (callback: AuthCallback) => {
-  if (isMockMode || !auth) {
-    console.warn("⚠️ Auth rodando em modo MOCK. Sistema de login simulado ativo.");
+const mapSupabaseUser = (user: User | null): UserWithUID | null => {
+  if (!user) return null;
+  return {
+    ...user,
+    uid: user.id, // Alias for compatibility
+  };
+};
 
-    // Verificação inicial
+export const observeAuthState = (callback: AuthCallback) => {
+  if (isMockMode || !supabase) {
+    console.warn("⚠️ Auth rodando em modo MOCK (Supabase).");
+
+    // Verificação inicial via localStorage
     const storedUser = localStorage.getItem('motoja_mock_user');
     if (storedUser) {
       try {
-        callback(JSON.parse(storedUser));
+        const parsed = JSON.parse(storedUser);
+        callback(parsed);
       } catch {
         callback(null);
       }
@@ -43,88 +52,125 @@ export const observeAuthState = (callback: AuthCallback) => {
       callback(null);
     }
 
-    // Registrar observador para atualizações futuras
     mockObservers.push(callback);
-
-    // Retorna função de limpeza (unsubscribe)
     return () => {
       const index = mockObservers.indexOf(callback);
       if (index > -1) mockObservers.splice(index, 1);
     };
   }
-  return onAuthStateChanged(auth, callback);
+
+  // Supabase Auth Listener
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const user = session?.user || null;
+    callback(mapSupabaseUser(user));
+  });
+
+  return () => {
+    subscription.unsubscribe();
+  };
 };
 
 export const login = async (email: string, pass: string) => {
-  if (isMockMode || !auth) {
-    // Simula delay de rede
+  if (isMockMode || !supabase) {
     await new Promise(r => setTimeout(r, 800));
 
-    // Validação básica simulada
+    // Validação simulada
     if (!email.includes('@')) throw new Error("E-mail inválido");
-    if (pass.length < 6) throw new Error("A senha deve ter pelo menos 6 caracteres (auth/weak-password)");
+    if (pass.length < 6) throw new Error("A senha deve ter pelo menos 6 caracteres");
+
+    // Simular validação "incorreta"
+    if (pass === 'wrongpass') throw new Error("Credenciais incorretas (simulado)");
 
     const uid = generateMockUid(email);
     const mockUser = {
-      uid,
+      id: uid,
+      uid: uid,
       email,
-      displayName: email.split('@')[0],
-      emailVerified: true
-    };
+      app_metadata: {},
+      user_metadata: {},
+      aud: 'authenticated',
+      created_at: new Date().toISOString()
+    } as unknown as UserWithUID;
 
     localStorage.setItem('motoja_mock_user', JSON.stringify(mockUser));
-    notifyObservers(mockUser); // Notifica o AuthContext
+    notifyObservers(mockUser);
 
-    return { user: mockUser };
+    return { user: mockUser, session: null };
   }
-  return signInWithEmailAndPassword(auth, email, pass);
+
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password: pass,
+  });
+
+  if (error) throw error;
+
+  return {
+    user: mapSupabaseUser(data.user),
+    session: data.session
+  };
 };
 
 export const register = async (email: string, pass: string) => {
-  if (isMockMode || !auth) {
+  if (isMockMode || !supabase) {
     await new Promise(r => setTimeout(r, 800));
 
     if (!email.includes('@')) throw new Error("E-mail inválido");
-    if (pass.length < 6) throw new Error("A senha deve ter pelo menos 6 caracteres (auth/weak-password)");
+    if (pass.length < 6) throw new Error("A senha deve ter pelo menos 6 caracteres");
 
     const uid = generateMockUid(email);
     const mockUser = {
-      uid,
+      id: uid,
+      uid: uid,
       email,
-      displayName: email.split('@')[0],
-      emailVerified: true
-    };
+      app_metadata: {},
+      user_metadata: {},
+      aud: 'authenticated',
+      created_at: new Date().toISOString()
+    } as unknown as UserWithUID;
 
     localStorage.setItem('motoja_mock_user', JSON.stringify(mockUser));
-    notifyObservers(mockUser); // Notifica o AuthContext
+    notifyObservers(mockUser);
 
-    return { user: mockUser };
+    return { user: mockUser, session: null };
   }
-  return createUserWithEmailAndPassword(auth, email, pass);
+
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password: pass,
+  });
+
+  if (error) throw error;
+
+  return {
+    user: mapSupabaseUser(data.user),
+    session: data.session
+  };
 };
 
 export const logout = async () => {
-  if (isMockMode || !auth) {
+  if (isMockMode || !supabase) {
     localStorage.removeItem('motoja_mock_user');
     const { clearSession } = await import('./user');
     clearSession();
-    notifyObservers(null); // Notifica o AuthContext que o usuário saiu
+    notifyObservers(null);
     return;
   }
+
   const { clearSession } = await import('./user');
   clearSession();
-  return firebaseSignOut(auth);
+
+  const { error } = await supabase.auth.signOut();
+  if (error) throw error;
 };
 
+// Supabase change password (requires generic 'updateUser')
 export const updateCurrentUserPassword = async (newPassword: string) => {
-  if (isMockMode || !auth) {
+  if (isMockMode || !supabase) {
     if (newPassword.length < 6) throw new Error("A senha deve ter pelo menos 6 caracteres");
-    // In mock mode, we just pretend it worked
     return;
   }
 
-  if (auth.currentUser) {
-    return updatePassword(auth.currentUser, newPassword);
-  }
-  throw new Error("Usuário não autenticado");
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) throw error;
 };

@@ -5,8 +5,7 @@ import { getOrCreateUserProfile } from '../services/user';
 import { Button, Input, Card, ConfirmationModal } from '../components/UI';
 import { AlertCircle, User, Phone, Car, MapPin, Camera, Building2, FileText, Upload, CheckCircle, Mail } from 'lucide-react';
 import { APP_CONFIG } from '../constants';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { storage } from '../services/firebase';
+import { uploadFile } from '../services/storage';
 import { saveCompany, getMockCompanies } from '../services/company';
 import { Company } from '../types';
 import { getSettings, subscribeToSettings, SystemSettings, DEFAULT_SETTINGS } from '../services/settings';
@@ -66,6 +65,17 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
   const [fieldErrors, setFieldErrors] = useState<{ [key: string]: string }>({});
   const [checkingField, setCheckingField] = useState<string | null>(null);
 
+  // Human-readable field name mapping for error messages
+  const fieldLabels: Record<string, string> = {
+    name: 'Nome',
+    email: 'E-mail',
+    phone: 'Celular',
+    cpf: 'CPF',
+    cnpj: 'CNPJ',
+    vehicle: 'Modelo Veículo',
+    plate: 'Placa',
+  };
+
 
   // Multi-step Registration (Passenger)
   const [step, setStep] = useState(1);
@@ -105,7 +115,7 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
       } else {
         // Users / Drivers
         if (field === 'email' || field === 'cpf' || field === 'phone') {
-          const { checkUniqueness } = await import('../services/user');
+          const { checkUniqueness } = await import('../services/constraints');
           const result = await checkUniqueness(field as any, value);
           if (result.exists) {
             setFieldErrors(prev => ({ ...prev, [field]: result.message || 'Já cadastrado.' }));
@@ -123,8 +133,8 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
 
   const handleNextStep = async () => {
     setError('');
-    const hasErrors = Object.values(fieldErrors).some(err => err);
-    if (hasErrors) return setError('Corrija os campos em vermelho antes de continuar.');
+    const activeErrors = Object.entries(fieldErrors).filter(([_, err]) => err);
+    if (activeErrors.length > 0) return setError(`Corrija os campos destacados em vermelho antes de continuar.`);
 
     // Validations for Step 1
     if (!name.trim() || !email.trim() || !phone.trim() || !cpf.trim() || !password) {
@@ -165,9 +175,10 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
 
   const handleAuth = async () => {
     // Block if any field error exists
-    const hasErrors = Object.values(fieldErrors).some(err => err);
-    if (hasErrors) {
-      setError('Corrija os campos em vermelho antes de continuar.');
+    const activeErrors = Object.entries(fieldErrors).filter(([_, err]) => err);
+    if (activeErrors.length > 0) {
+      console.warn('Field errors blocking submission:', activeErrors);
+      setError(`Corrija os campos destacados em vermelho antes de continuar.`);
       return;
     }
 
@@ -309,7 +320,10 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
 
         } catch (loginErr: any) {
           // Special Case: Admin-created company (Firestore record exists, but no Firebase Auth User yet)
-          if (role === 'company' && companyForLogin && companyForLogin.passwordHash === password && loginErr.code === 'auth/user-not-found') {
+          // Supabase returns "Invalid login credentials" for both wrong password and user not found.
+          // We rely on the password hash check to distinguish.
+          if (role === 'company' && companyForLogin && companyForLogin.passwordHash === password &&
+            (loginErr.code === 'auth/user-not-found' || loginErr.message.includes('Invalid login credentials'))) {
             console.log('[Auth] Admin-created company login attempt. Registering new Auth User...');
             // Auto-register the user to "claim" the account
             userCredential = await register(finalEmail, password);
@@ -373,34 +387,31 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
 
       // File Uploads
       let cnhUrl = '';
-      if (!isLogin && (role === 'driver' || role === 'driver-register') && cnhFile && storage) {
+      if (!isLogin && (role === 'driver' || role === 'driver-register') && cnhFile) {
         try {
           const ext = cnhFile.name.split('.').pop() || 'pdf';
-          const storageRef = ref(storage, `drivers/${uid || Date.now()}_cnh.${ext}`);
-          await uploadBytes(storageRef, cnhFile);
-          cnhUrl = await getDownloadURL(storageRef);
+          // Use uploadFile service
+          cnhUrl = await uploadFile(cnhFile, `drivers/${uid || Date.now()}_cnh.${ext}`, 'secure-documents');
         } catch (uploadError) {
           console.error("Upload failed", uploadError);
         }
       }
 
       let contractUrl = '';
-      if (!isLogin && role === 'company' && contractFile && storage) {
+      if (!isLogin && role === 'company' && contractFile) {
         try {
-          const storageRef = ref(storage, `companies / ${uid || Date.now()} _contract.pdf`);
-          await uploadBytes(storageRef, contractFile);
-          contractUrl = await getDownloadURL(storageRef);
+          // Use uploadFile service
+          contractUrl = await uploadFile(contractFile, `companies/${uid || Date.now()}_contract.pdf`, 'secure-documents');
         } catch (uploadError) {
           console.error("Upload failed", uploadError);
         }
       }
 
       let logoUrl = '';
-      if (!isLogin && role === 'company' && logoFile && storage) {
+      if (!isLogin && role === 'company' && logoFile) {
         try {
-          const storageRef = ref(storage, `companies / ${uid || Date.now()} _logo.png`);
-          await uploadBytes(storageRef, logoFile);
-          logoUrl = await getDownloadURL(storageRef);
+          // Use uploadFile service
+          logoUrl = await uploadFile(logoFile, `companies/${uid || Date.now()}_logo.png`, 'public-assets');
         } catch (uploadError) {
           console.error("Logo upload failed", uploadError);
         }
@@ -486,11 +497,21 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
       onLoginSuccess();
     } catch (err: any) {
       console.error(err);
-      if (err.message && (err.message.includes('auth/invalid-credential') || err.message.includes('auth/wrong-password'))) {
+      if (err.message && (
+        err.message.includes('auth/invalid-credential') ||
+        err.message.includes('auth/wrong-password') ||
+        err.message.includes('Invalid login credentials')
+      )) {
         setError('Credenciais incorretas.');
-      } else if (err.message && err.message.includes('auth/email-already-in-use')) {
+      } else if (err.message && (
+        err.message.includes('auth/email-already-in-use') ||
+        err.message.includes('User already registered')
+      )) {
         setError('Este e-mail já está cadastrado.');
-      } else if (err.message && err.message.includes('auth/weak-password')) {
+      } else if (err.message && (
+        err.message.includes('auth/weak-password') ||
+        err.message.includes('Password should be at least 6 characters')
+      )) {
         setError('A senha deve ter pelo menos 6 caracteres.');
       } else {
         setError('Erro: ' + (err.message || 'Falha na autenticação'));
@@ -897,8 +918,10 @@ export const AuthScreen = ({ role: rawRole, onLoginSuccess, onBack }: { role: st
                       label={role === 'company' && isLogin ? "E-mail ou CNPJ" : "E-mail de Acesso"}
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
+                      onBlur={!isLogin ? () => handleBlur('email', email) : undefined}
                       placeholder={role === 'company' && isLogin ? "seu@email.com ou CNPJ" : "seu@email.com"}
                       type={!isLogin && role === 'company' ? 'email' : 'text'}
+                      error={!isLogin ? fieldErrors.email : undefined}
                     // icon={<User size={18} />}
                     />
                   )}

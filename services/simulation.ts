@@ -1,4 +1,4 @@
-import { isMockMode } from './firebase';
+import { isMockMode } from './supabase';
 import { RideRequest, Driver } from '../types';
 import { acceptRide, updateDriverLocation, startRide, completeRide } from './ride';
 

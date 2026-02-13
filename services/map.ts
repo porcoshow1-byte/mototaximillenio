@@ -40,10 +40,16 @@ const hasValidKey = () => {
 export const reverseGeocode = async (lat: number, lng: number): Promise<string> => {
   if (hasValidKey() && typeof window !== 'undefined' && window.google && window.google.maps) {
     if (!geocoderService) {
-      try {
-        geocoderService = new window.google.maps.Geocoder();
-      } catch (e) {
-        console.warn("Erro ao instanciar Geocoder:", e);
+      if (window.google.maps.Geocoder) {
+        try {
+          geocoderService = new window.google.maps.Geocoder();
+        } catch (e) {
+          console.warn("Erro ao instanciar Geocoder:", e);
+        }
+      } else {
+        console.warn("Google Maps Geocoder library not loaded yet.");
+        // Fallback: return simple coordinate string or error handled by caller
+        return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
       }
     }
 

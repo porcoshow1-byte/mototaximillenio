@@ -61,6 +61,8 @@ export type NotificationType =
     | 'rideCancelled'      // Ambos: corrida cancelada
     | 'newMessage'         // Ambos: nova mensagem no chat
     | 'paymentConfirmed'   // Passageiro: pagamento confirmado
+    | 'driverApproved'     // Motorista: cadastro aprovado
+    | 'driverRejected'     // Motorista: cadastro rejeitado
     // Admin notifications
     | 'adminNewDriver'     // Admin: novo motorista aguardando aprovação
     | 'adminRideIssue'     // Admin: problema reportado em corrida
@@ -131,6 +133,23 @@ const notificationConfigs: Record<NotificationType, (data?: any) => Notification
         tag: 'payment',
     }),
 
+    // Driver verification notifications
+    driverApproved: () => ({
+        title: '🎉 Cadastro Aprovado!',
+        body: 'Parabéns! Seu cadastro foi aprovado. Você já pode ficar online e aceitar corridas!',
+        tag: 'driver-verification',
+        requireInteraction: true,
+    }),
+
+    driverRejected: (data) => ({
+        title: '❌ Cadastro Não Aprovado',
+        body: data?.reason
+            ? `Seu cadastro não foi aprovado. Motivo: ${data.reason}`
+            : 'Seu cadastro não foi aprovado. Entre em contato com o suporte.',
+        tag: 'driver-verification',
+        requireInteraction: true,
+    }),
+
     // Admin Notifications
     adminNewDriver: (data) => ({
         title: '🆕 Novo piloto aguardando',
@@ -167,12 +186,15 @@ const notificationConfigs: Record<NotificationType, (data?: any) => Notification
 
 /**
  * Envia uma notificação local para o usuário
+ * Usa o Service Worker quando disponível para funcionar mesmo com app fechado
  * @param type Tipo da notificação
  * @param data Dados opcionais para personalizar a mensagem
+ * @param forceShow Se true, mostra mesmo que a página esteja em foco
  */
 export const showNotification = async (
     type: NotificationType,
-    data?: Record<string, any>
+    data?: Record<string, any>,
+    forceShow?: boolean
 ): Promise<boolean> => {
     // Verificar permissão
     if (Notification.permission !== 'granted') {
@@ -180,15 +202,42 @@ export const showNotification = async (
         return false;
     }
 
-    // Não mostrar se a página estiver visível e em foco
-    // (deixa para o app mostrar via UI)
-    if (document.visibilityState === 'visible' && document.hasFocus()) {
+    // Não mostrar se a página estiver visível e em foco (a menos que forçado)
+    if (!forceShow && document.visibilityState === 'visible' && document.hasFocus()) {
         return false;
     }
 
     try {
         const config = notificationConfigs[type](data);
 
+        // PERSISTENCE: Save to Supabase if user is logged in
+        // We need to dynamically import supabase to avoid circular deps and get current session
+        import('./supabase').then(({ supabase, isMockMode }) => {
+            if (!isMockMode && supabase) {
+                supabase.auth.getSession().then(({ data: sessionData }) => {
+                    if (sessionData.session?.user) {
+                        persistNotification(sessionData.session.user.id, type, config);
+                    }
+                });
+            }
+        });
+
+        // Try using Service Worker for persistent notifications
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            const registration = await navigator.serviceWorker.ready;
+            await registration.showNotification(config.title, {
+                body: config.body,
+                icon: config.icon || '/icon-192.png',
+                badge: DEFAULT_BADGE,
+                tag: config.tag,
+                requireInteraction: config.requireInteraction || false,
+                data: { ...config.data, url: window.location.href },
+                silent: false,
+            } as NotificationOptions);
+            return true;
+        }
+
+        // Fallback: regular Notification API
         const notification = new Notification(config.title, {
             body: config.body,
             icon: config.icon || DEFAULT_ICON,
@@ -196,12 +245,10 @@ export const showNotification = async (
             tag: config.tag,
             requireInteraction: config.requireInteraction || false,
             data: config.data,
-            silent: false, // Permite som do sistema
+            silent: false,
         });
 
-        // Handler para quando usuário clica na notificação
         notification.onclick = () => {
-            // Foca na janela do app
             window.focus();
             notification.close();
         };
@@ -224,4 +271,125 @@ export const ensureNotificationPermission = async (): Promise<boolean> => {
     if (status === 'denied' || status === 'unsupported') return false;
 
     return requestNotificationPermission();
+};
+
+/**
+ * Registra o Service Worker para notificações push
+ * Deve ser chamado no início do app
+ */
+export const registerServiceWorker = async (): Promise<ServiceWorkerRegistration | null> => {
+    if (!('serviceWorker' in navigator)) {
+        console.warn('Service Worker não suportado neste navegador');
+        return null;
+    }
+
+    try {
+        const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+        console.log('Service Worker registrado com sucesso:', registration.scope);
+        return registration;
+    } catch (error) {
+        console.error('Erro ao registrar Service Worker:', error);
+        return null;
+    }
+};
+
+// ==========================================
+// PERSISTÊNCIA (SUPABASE)
+// ==========================================
+
+export interface NotificationItem {
+    id: string;
+    user_id: string;
+    title: string;
+    body: string;
+    type: NotificationType;
+    read: boolean;
+    created_at: string;
+    data?: any;
+}
+
+/**
+ * Busca notificações do usuário no Supabase
+ */
+export const getNotifications = async (userId: string): Promise<NotificationItem[]> => {
+    // Importar supabase dinamicamente para evitar ciclo de dependência se houver
+    const { supabase, isMockMode } = await import('./supabase');
+
+    if (isMockMode || !supabase) {
+        return []; // Mock return if needed
+    }
+
+    const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+    if (error) {
+        console.error('Erro ao buscar notificações:', error);
+        return [];
+    }
+
+    return data as NotificationItem[];
+};
+
+/**
+ * Marca uma notificação como lida
+ */
+export const markAsRead = async (notificationId: string) => {
+    const { supabase, isMockMode } = await import('./supabase');
+    if (isMockMode || !supabase) return;
+
+    await supabase
+        .from('notifications')
+        .update({ read: true })
+        .eq('id', notificationId);
+};
+
+/**
+ * Envia uma notificação para um usuário específico (persiste no Supabase)
+ * @param userId ID do usuário destino
+ * @param type Tipo da notificação
+ * @param data Dados da notificação (title, body, etc)
+ */
+export const sendNotification = async (userId: string, type: NotificationType, data: { title: string, body: string, data?: any }) => {
+    try {
+        const { supabase, isMockMode } = await import('./supabase');
+        if (isMockMode || !supabase) {
+            console.log(`[Mock] Notification sent to ${userId}:`, data);
+            return true;
+        }
+
+        const { error } = await supabase.from('notifications').insert({
+            user_id: userId,
+            type: type,
+            title: data.title,
+            body: data.body,
+            read: false,
+            data: data.data,
+            created_at: new Date().toISOString()
+        });
+
+        if (error) {
+            console.error('Erro ao enviar notificação:', error);
+            return false;
+        }
+        return true;
+
+    } catch (err) {
+        console.error('Falha ao persistir notificação:', err);
+        return false;
+    }
+};
+
+/**
+ * Helper interno para persistir notificação vinda do showNotification
+ */
+const persistNotification = async (userId: string, type: NotificationType, config: NotificationData) => {
+    return sendNotification(userId, type, {
+        title: config.title,
+        body: config.body,
+        data: config.data
+    });
 };

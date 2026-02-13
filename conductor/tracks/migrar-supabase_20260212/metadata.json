@@ -1,0 +1,16 @@
+{
+    "id": "migrar-supabase_20260212",
+    "title": "Migração Firebase → Supabase",
+    "type": "refactor",
+    "status": "pending",
+    "created": "2026-02-12T02:20:00-03:00",
+    "updated": "2026-02-12T02:20:00-03:00",
+    "phases": {
+        "total": 6,
+        "completed": 0
+    },
+    "tasks": {
+        "total": 31,
+        "completed": 0
+    }
+}

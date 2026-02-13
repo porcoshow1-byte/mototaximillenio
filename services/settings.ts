@@ -1,8 +1,10 @@
 /**
  * Settings Service
- * Centralizes all application configuration including Pricing, Company Info, and Integrations.
- * Persists to localStorage for the prototype.
+ * Centralizes all application configuration.
+ * Persists to Supabase 'settings' table (row id='general').
  */
+
+import { supabase, isMockMode } from './supabase';
 
 export interface PaymentGatewaySettings {
     provider: 'mercadopago' | 'asaas' | 'stripe' | 'none';
@@ -31,6 +33,17 @@ export interface SMTPSettings {
     secure: boolean;
     fromName: string;
     fromEmail: string;
+}
+
+export interface CampaignBanner {
+    id: string;
+    title: string;
+    imageUrl: string;
+    linkUrl?: string;
+    showCta?: boolean;
+    ctaType?: 'saiba_mais' | 'ligar' | 'whatsapp' | 'eu_quero' | 'comprar' | 'pedir_agora' | 'chamar_zap' | 'zap' | 'chama';
+    active: boolean;
+    createdAt: string;
 }
 
 export interface SystemSettings {
@@ -64,12 +77,12 @@ export interface SystemSettings {
 
     // Visual Customization
     visual: {
-        loginBackgroundImage: string; // URL or Base64 (Desktop)
-        mobileBackgroundImage: string; // URL or Base64 (Mobile)
-        appLogoUrl: string; // URL or Base64 (Optional)
-        primaryColor: string; // Optional branding
-        loginTitle: string; // Custom title
-        loginSubtitle: string; // Custom subtitle
+        loginBackgroundImage: string;
+        mobileBackgroundImage: string;
+        appLogoUrl: string;
+        primaryColor: string;
+        loginTitle: string;
+        loginSubtitle: string;
     };
 
     // Integations
@@ -80,17 +93,6 @@ export interface SystemSettings {
     // Campaigns (Partner Ads)
     campaigns: CampaignBanner[];
     activeCampaignBanner: string | null;
-}
-
-export interface CampaignBanner {
-    id: string;
-    title: string;
-    imageUrl: string;
-    linkUrl?: string;
-    showCta?: boolean;
-    ctaType?: 'saiba_mais' | 'ligar' | 'whatsapp' | 'eu_quero' | 'comprar' | 'pedir_agora' | 'chamar_zap' | 'zap' | 'chama';
-    active: boolean;
-    createdAt: string;
 }
 
 export const DEFAULT_SETTINGS: SystemSettings = {
@@ -153,36 +155,8 @@ export const DEFAULT_SETTINGS: SystemSettings = {
     activeCampaignBanner: null
 };
 
-import { db } from './firebase';
-import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
-
 const STORAGE_KEY = 'motoja_system_settings';
-
-const getSettingsDoc = () => {
-    if (!db) return null;
-    return doc(db, 'settings', 'general');
-};
-/**
- * Fetch settings from Firestore.
- * Falls back to DEFAULTS if not found.
- */
-export const getSettings = async (): Promise<SystemSettings> => {
-    try {
-        const docRef = getSettingsDoc();
-        if (docRef) {
-            const docSnap = await getDoc(docRef);
-
-            if (docSnap.exists()) {
-                const data = docSnap.data() as Partial<SystemSettings>;
-                return mergeWithDefaults(data);
-            }
-        }
-    } catch (e) {
-        console.warn('Error fetching settings from Firestore:', e);
-    }
-
-    return DEFAULT_SETTINGS;
-};
+export const SETTINGS_TABLE = 'settings';
 
 /**
  * Validates and merges data with default settings
@@ -199,28 +173,52 @@ const mergeWithDefaults = (data: any): SystemSettings => {
 };
 
 /**
- * Save settings to Firestore
- * Images are compressed Base64 or Firebase Storage URLs.
+ * Fetch settings from Supabase.
+ * Falls back to DEFAULTS if not found.
  */
-export const saveSettings = async (settings: SystemSettings): Promise<void> => {
-    const docRef = getSettingsDoc();
-    if (!docRef) {
-        throw new Error('Firestore não disponível. Configure as variáveis de ambiente do Firebase.');
+export const getSettings = async (): Promise<SystemSettings> => {
+    if (isMockMode || !supabase) {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) return mergeWithDefaults(JSON.parse(stored));
+        return DEFAULT_SETTINGS;
     }
 
     try {
-        const jsonStr = JSON.stringify(settings);
-        const sizeKB = Math.round(jsonStr.length / 1024);
-        console.log(`[Settings] Document size: ${sizeKB}KB`);
+        const { data, error } = await supabase
+            .from(SETTINGS_TABLE)
+            .select('data')
+            .eq('id', 'general')
+            .single();
 
-        if (sizeKB > 900) {
-            console.warn(`[Settings] Document is very large (${sizeKB}KB), may exceed 1MB Firestore limit`);
+        if (data && data.data) {
+            return mergeWithDefaults(data.data);
         }
+    } catch (e) {
+        console.warn('Error fetching settings from Supabase:', e);
+    }
 
-        await setDoc(docRef, settings);
-        console.log('[Settings] Saved to Firestore successfully');
+    return DEFAULT_SETTINGS;
+};
+
+/**
+ * Save settings to Supabase
+ */
+export const saveSettings = async (settings: SystemSettings): Promise<void> => {
+    if (isMockMode || !supabase) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+        return;
+    }
+
+    try {
+        const { error } = await supabase
+            .from(SETTINGS_TABLE)
+            .upsert({ id: 'general', data: settings });
+
+        if (error) throw error;
+
+        console.log('[Settings] Saved to Supabase successfully');
     } catch (e: any) {
-        console.error('[Settings] Error saving to Firestore:', e);
+        console.error('[Settings] Error saving to Supabase:', e);
         throw new Error('Erro ao salvar: ' + (e?.message || 'Erro desconhecido'));
     }
 };
@@ -229,23 +227,31 @@ export const saveSettings = async (settings: SystemSettings): Promise<void> => {
  * Real-time settings subscription
  */
 export const subscribeToSettings = (callback: (settings: SystemSettings) => void) => {
-    const docRef = getSettingsDoc();
-    if (!docRef) {
-        console.warn('Firestore not available for subscription.');
+    if (isMockMode || !supabase) {
         callback(DEFAULT_SETTINGS);
         return () => { };
     }
 
-    return onSnapshot(docRef, (doc) => {
-        if (doc.exists()) {
-            const data = doc.data();
-            const merged = mergeWithDefaults(data);
-            // Update cache silently
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-            callback(merged);
-        } else {
-            callback(DEFAULT_SETTINGS);
-        }
-    });
-};
+    // Initial fetch
+    getSettings().then(callback);
 
+    const channel = supabase
+        .channel('settings_update')
+        .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: SETTINGS_TABLE, filter: "id=eq.general" },
+            (payload) => {
+                if (payload.new && (payload.new as any).data) {
+                    const merged = mergeWithDefaults((payload.new as any).data);
+                    // Update cache silently
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+                    callback(merged);
+                }
+            }
+        )
+        .subscribe();
+
+    return () => {
+        channel.unsubscribe();
+    };
+};

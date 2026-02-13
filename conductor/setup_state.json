@@ -1,0 +1,45 @@
+{
+    "status": "complete",
+    "project_type": "brownfield",
+    "current_section": "complete",
+    "current_question": 0,
+    "completed_sections": [
+        "product",
+        "guidelines",
+        "tech_stack",
+        "workflow",
+        "styleguides"
+    ],
+    "answers": {
+        "project_name": "MotoJá",
+        "project_description": "Uma plataforma white-label completa para mototáxi, entregas rápidas e pequenas encomendas, com apps para passageiro, piloto e painel administrativo.",
+        "problem_statement": "Conecta passageiros e empresas a mototaxistas locais, modernizando o serviço com segurança, rastreamento e facilidade de pagamento.",
+        "target_users": "Passageiros, Empresas, Mototaxistas e Administradores",
+        "key_goals": "Garantir estabilidade e escalabilidade para alta demanda; Oferecer a melhor experiência de usuário (UX) do mercado local.",
+        "voice_tone": "Profissional e técnico, porém amigável e acessível.",
+        "design_principles": "Performance em primeiro lugar; Foco na experiência do desenvolvedor; Segurança e Confiabilidade.",
+        "primary_language": "TypeScript",
+        "frontend_framework": "React (Vite)",
+        "backend_framework": "Supabase (Edge Functions + PostgreSQL)",
+        "database": "Supabase (PostgreSQL)",
+        "auth": "Supabase Auth",
+        "infrastructure": "Vercel (frontend) + Supabase Edge Functions (backend)",
+        "tdd_strictness": "Moderado - testes incentivados, não bloqueiam desenvolvimento",
+        "commit_strategy": "Conventional Commits (feat:, fix:, chore:, refactor:)",
+        "code_review": "Obrigatório para mudanças não-triviais",
+        "verification_checkpoints": "Após cada fase completa",
+        "styleguides": "TypeScript + CSS"
+    },
+    "files_created": [
+        "conductor/index.md",
+        "conductor/product.md",
+        "conductor/product-guidelines.md",
+        "conductor/tech-stack.md",
+        "conductor/workflow.md",
+        "conductor/tracks.md",
+        "conductor/code_styleguides/typescript.md",
+        "conductor/code_styleguides/css.md"
+    ],
+    "started_at": "2026-02-11T13:13:00-03:00",
+    "last_updated": "2026-02-12T02:11:00-03:00"
+}

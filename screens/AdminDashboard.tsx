@@ -16,7 +16,7 @@ import { useGeoLocation } from '../hooks/useGeoLocation';
 import { updateUserProfile } from '../services/user';
 import { getAllCompanies, saveCompany, subscribeToCompanies } from '../services/company';
 import { subscribeToTickets, SupportTicket } from '../services/support';
-import { db, isMockMode } from '../services/firebase';
+import { supabase, isMockMode } from '../services/supabase';
 import { playSound } from '../services/audio';
 import { CompanyDashboard } from './CompanyDashboard';
 import { CampaignsTab } from './CampaignsTab';
@@ -24,9 +24,11 @@ import { SimulatedMap } from '../components/SimulatedMap';
 import { Driver, RideRequest, User, Occurrence } from '../types';
 import { useJsApiLoader } from '@react-google-maps/api';
 import { APP_CONFIG } from '../constants';
-import { collection, getDocs, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
+// Firestore imports removed — using Supabase Realtime
 import { uploadFile } from '../services/storage';
 import { getSettings, saveSettings, subscribeToSettings, SystemSettings, DEFAULT_SETTINGS } from '../services/settings';
+import { startRideSimulation, stopRideSimulation } from '../services/simulation';
+import { getNotifications, sendNotification } from '../services/notifications';
 import { sendEmail, testSMTPConnection } from '../services/email';
 import { formatCNPJ } from '../utils/formatters';
 
@@ -51,8 +53,9 @@ const SimpleTooltip = ({ content, children }: { content: string, children?: Reac
 );
 
 // --- Subcomponent: Driver Details Modal ---
-const DriverDetailModal = ({ driver, onClose, rides = [] }: { driver: Driver, onClose: () => void, rides?: any[] }) => {
+const DriverDetailModal = ({ driver: initialDriver, onClose, onRefresh, rides = [] }: { driver: Driver, onClose: () => void, onRefresh?: () => void, rides?: any[] }) => {
   const [loading, setLoading] = useState(false);
+  const [driver, setDriver] = useState(initialDriver);
   const [confirmModal, setConfirmModal] = useState({
     isOpen: false,
     title: '',
@@ -66,11 +69,23 @@ const DriverDetailModal = ({ driver, onClose, rides = [] }: { driver: Driver, on
     try {
       await updateUserProfile(driver.id, {
         verificationStatus: action === 'approve' ? 'approved' : 'rejected',
-        status: action === 'approve' ? 'offline' : 'offline', // If blocked, force offline
+        driverStatus: 'offline',
         rejectionReason: rejectionReason || null
-      });
-      onClose();
-      window.location.reload(); // Simple reload to refresh data
+      } as any);
+
+      // Update local state to reflect the change without closing the modal
+      setDriver(prev => ({
+        ...prev,
+        verificationStatus: action === 'approve' ? 'approved' : 'rejected',
+        rejectionReason: rejectionReason || undefined
+      } as Driver));
+
+      alert(action === 'approve'
+        ? '✅ Motorista aprovado com sucesso!'
+        : '❌ Motorista rejeitado.');
+
+      // Refresh parent data if callback provided
+      if (onRefresh) onRefresh();
     } catch (e) {
       console.error(e);
       alert("Erro ao atualizar status: " + (e as any).message);
@@ -80,21 +95,18 @@ const DriverDetailModal = ({ driver, onClose, rides = [] }: { driver: Driver, on
   };
 
   const handleAction = async (action: 'approve' | 'block') => {
-    if (action === 'block' && driver.verificationStatus === 'pending') {
+    if (action === 'approve') {
+      if (confirm('Tem certeza que deseja APROVAR este motorista?')) {
+        performUpdate(action);
+      }
+    } else if (action === 'block' && driver.verificationStatus === 'pending') {
       const reason = prompt("Motivo da Rejeição (Obrigatório):");
       if (!reason) return; // Cancel if empty
       performUpdate(action, reason);
     } else {
-      setConfirmModal({
-        isOpen: true,
-        title: action === 'approve' ? 'Aprovar Motorista' : 'Bloquear Motorista',
-        message: `Tem certeza que deseja ${action === 'approve' ? 'APROVAR' : 'BLOQUEAR'} este motorista?`,
-        variant: action === 'approve' ? 'success' : 'danger',
-        onConfirm: () => {
-          performUpdate(action);
-          setConfirmModal(prev => ({ ...prev, isOpen: false }));
-        }
-      });
+      if (confirm('Tem certeza que deseja BLOQUEAR este motorista?')) {
+        performUpdate(action);
+      }
     }
   };
 
@@ -141,13 +153,21 @@ const DriverDetailModal = ({ driver, onClose, rides = [] }: { driver: Driver, on
 
               <div className="grid grid-cols-1 gap-3">
                 <div>
+                  <label className="text-xs text-gray-500 uppercase">Nome Completo</label>
+                  <p className="font-medium text-gray-900">{driver.name || 'Não informado'}</p>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 uppercase">CPF</label>
+                  <p className="font-medium text-gray-900">{driver.cpf || 'Não informado'}</p>
+                </div>
+                <div>
                   <label className="text-xs text-gray-500 uppercase">E-mail</label>
                   <p className="font-medium text-gray-900">{driver.email || 'Não informado'}</p>
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 uppercase">Telefone / WhatsApp</label>
                   <div className="flex items-center gap-2">
-                    <p className="font-medium text-gray-900">{driver.phone || 'N/A'}</p>
+                    <p className="font-medium text-gray-900">{driver.phone || 'Não informado'}</p>
                     {driver.phone && (
                       <button onClick={openWhatsApp} className="mb-1 ml-2 px-3 py-1 bg-green-50 text-green-700 text-xs rounded-full border border-green-200 hover:bg-green-100 flex items-center gap-1 inline-flex" title="Abrir WhatsApp">
                         <MessageSquare size={12} /> WhatsApp
@@ -235,9 +255,40 @@ const DriverDetailModal = ({ driver, onClose, rides = [] }: { driver: Driver, on
               <h3 className="absolute top-4 left-4 font-bold text-gray-500 text-sm uppercase">Documento CNH</h3>
               {driver.cnhUrl ? (
                 driver.cnhUrl.toLowerCase().endsWith('.pdf') ? (
-                  <iframe src={driver.cnhUrl} className="w-full h-64 rounded-lg border border-gray-200" title="CNH PDF" />
+                  <div className="w-full mt-6">
+                    <iframe src={driver.cnhUrl} className="w-full h-80 rounded-lg border border-gray-200" title="CNH PDF" />
+                    <button
+                      onClick={() => window.open(driver.cnhUrl, '_blank')}
+                      className="mt-2 w-full text-center text-sm text-blue-600 hover:text-blue-800 underline flex items-center justify-center gap-1"
+                    >
+                      <Eye size={14} /> Abrir PDF em Nova Aba
+                    </button>
+                  </div>
                 ) : (
-                  <img src={driver.cnhUrl} alt="CNH" className="w-full h-auto max-h-[300px] object-contain rounded-lg shadow-sm cursor-pointer" onClick={() => window.open(driver.cnhUrl, '_blank')} />
+                  <div className="mt-6 w-full">
+                    <img
+                      src={driver.cnhUrl}
+                      alt="CNH do motorista"
+                      className="w-full h-auto max-h-[300px] object-contain rounded-lg shadow-sm cursor-pointer hover:opacity-90 transition"
+                      onClick={() => window.open(driver.cnhUrl, '_blank')}
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        const fallback = target.nextElementSibling;
+                        if (fallback) (fallback as HTMLElement).style.display = 'flex';
+                      }}
+                    />
+                    <div className="hidden flex-col items-center justify-center py-8 text-gray-400">
+                      <AlertTriangle size={32} className="mb-2 opacity-50" />
+                      <p className="text-sm">Imagem não pôde ser carregada</p>
+                      <button
+                        onClick={() => window.open(driver.cnhUrl, '_blank')}
+                        className="mt-2 text-blue-600 hover:text-blue-800 text-sm underline"
+                      >
+                        Abrir link original
+                      </button>
+                    </div>
+                  </div>
                 )
               ) : (
                 <div className="text-center text-gray-400">
@@ -1500,6 +1551,9 @@ const AdminDashboardContent = ({ onLogout }: { onLogout?: () => void }) => {
   // Drivers Tab State
   const [filterStatus, setFilterStatus] = useState<'all' | 'online' | 'offline' | 'busy' | 'pending'>('all');
   const [sortField, setSortField] = useState<'name' | 'rating'>('name');
+  const [selectedMapDriver, setSelectedMapDriver] = useState<Driver | null>(null);
+
+
   const [selectedDriverIds, setSelectedDriverIds] = useState<string[]>([]);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [viewDriver, setViewDriver] = useState<Driver | null>(null);
@@ -1515,6 +1569,7 @@ const AdminDashboardContent = ({ onLogout }: { onLogout?: () => void }) => {
   // Notifications State
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [notificationFilter, setNotificationFilter] = useState('all');
 
   // Subscribe to real tickets
   const prevTicketsCountRef = React.useRef(0);
@@ -1555,24 +1610,21 @@ const AdminDashboardContent = ({ onLogout }: { onLogout?: () => void }) => {
   const knownDriversRef = React.useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    if (!db) return;
+    if (!supabase || isMockMode) return;
 
-    // Initial fetch to populate known drivers so we don't notify for existing ones immediately (optional, or notify for all pending)
-    // For now, we'll notify for any "added" event which happens on initial load for existing docs too
-    // To avoid spam on reload, we could check timestamp, but simple approach is fine for now
-
-    const q = query(collection(db, 'users'), where('role', '==', 'driver'), where('verificationStatus', '==', 'pending'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      snapshot.docChanges().forEach((change) => {
-        if (change.type === 'added') {
-          const driver = change.doc.data();
-          const id = change.doc.id;
-
-          // Avoid notifying if we already know this driver (locally) - optional
+    const channel = supabase.channel('pending-drivers')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'users',
+        filter: 'type=eq.driver'
+      }, (payload: any) => {
+        const driver = payload.new;
+        if (driver.verification_status === 'pending') {
+          const id = driver.id;
           if (!knownDriversRef.current.has(id)) {
             knownDriversRef.current.add(id);
-            playSound('newRequest'); // Sound
-
+            playSound('newRequest');
             const newNotif = {
               id: `driver-${id}`,
               type: 'new_driver',
@@ -1585,72 +1637,78 @@ const AdminDashboardContent = ({ onLogout }: { onLogout?: () => void }) => {
             setNotifications(prev => [newNotif, ...prev]);
           }
         }
-      });
-    });
-    return () => unsubscribe();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   // Listen for Pending Companies (New Registrations)
   const knownCompaniesRef = React.useRef<Set<string>>(new Set());
   useEffect(() => {
-    if (!db) return;
-    const q = query(collection(db, 'companies'), where('status', '==', 'pending'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      snapshot.docChanges().forEach((change) => {
-        if (change.type === 'added') {
-          const comp = change.doc.data();
-          const id = change.doc.id;
-          if (!knownCompaniesRef.current.has(id)) {
-            knownCompaniesRef.current.add(id);
-            playSound('newRequest');
-            const newNotif = {
-              id: `company-${id}`,
-              type: 'new_company',
-              title: 'Nova Empresa Cadastrada',
-              message: `${comp.name} aguarda análise.`,
-              time: new Date(),
-              read: false,
-              companyId: id
-            };
-            setNotifications(prev => [newNotif, ...prev]);
-          }
+    if (!supabase || isMockMode) return;
+
+    const channel = supabase.channel('pending-companies')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'companies',
+        filter: 'status=eq.pending'
+      }, (payload: any) => {
+        const comp = payload.new;
+        const id = comp.id;
+        if (!knownCompaniesRef.current.has(id)) {
+          knownCompaniesRef.current.add(id);
+          playSound('newRequest');
+          const newNotif = {
+            id: `company-${id}`,
+            type: 'new_company',
+            title: 'Nova Empresa Cadastrada',
+            message: `${comp.name} aguarda análise.`,
+            time: new Date(),
+            read: false,
+            companyId: id
+          };
+          setNotifications(prev => [newNotif, ...prev]);
         }
-      });
-    });
-    return () => unsubscribe();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   // Listen for New Passengers
   const knownUsersRef = React.useRef<Set<string>>(new Set());
   useEffect(() => {
-    if (!db) return;
-    const q = query(collection(db, 'users'), where('role', '==', 'user'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      snapshot.docChanges().forEach((change) => {
-        if (change.type === 'added') {
-          const user = change.doc.data();
-          const id = change.doc.id;
-          // Basic check to avoid notifying for ALL existing users on reload
-          // (Simple session-based uniqueness)
-          if (!knownUsersRef.current.has(id)) {
-            knownUsersRef.current.add(id);
-            // Only notify recent? For now, notify all "new" to this session
-            playSound('notification');
-            const newNotif = {
-              id: `user-${id}`,
-              type: 'new_user',
-              title: 'Novo Passageiro Registrado',
-              message: `${user.name} criou uma conta.`,
-              time: new Date(),
-              read: false,
-              userId: id
-            };
-            setNotifications(prev => [newNotif, ...prev]);
-          }
+    if (!supabase || isMockMode) return;
+
+    const channel = supabase.channel('new-users')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'users',
+        filter: 'type=eq.passenger'
+      }, (payload: any) => {
+        const user = payload.new;
+        const id = user.id;
+        if (!knownUsersRef.current.has(id)) {
+          knownUsersRef.current.add(id);
+          playSound('notification');
+          const newNotif = {
+            id: `user-${id}`,
+            type: 'new_user',
+            title: 'Novo Passageiro Registrado',
+            message: `${user.name} criou uma conta.`,
+            time: new Date(),
+            read: false,
+            userId: id
+          };
+          setNotifications(prev => [newNotif, ...prev]);
         }
-      });
-    });
-    return () => unsubscribe();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   const deleteNotification = async (e: React.MouseEvent, id: string) => {
@@ -1919,6 +1977,19 @@ const AdminDashboardContent = ({ onLogout }: { onLogout?: () => void }) => {
       [occurrenceId]: prev[occurrenceId].map(e => e.id === entryId ? { ...e, content: newContent } : e)
     }));
   };
+
+  // Map & Driver State — MUST be before any conditional returns (Rules of Hooks)
+  const [driverLocations, setDriverLocations] = useState<Record<string, Driver>>({});
+
+  useEffect(() => {
+    if (dashboardData?.drivers) {
+      const locs: Record<string, Driver> = {};
+      dashboardData.drivers.forEach(d => {
+        if (d.id) locs[d.id] = d;
+      });
+      setDriverLocations(locs);
+    }
+  }, [dashboardData]);
 
   const SidebarItem = ({ id, icon, label, badge }: { id: string, icon: React.ReactNode, label: string, badge?: number | string }) => (
     <div
@@ -2316,7 +2387,7 @@ const AdminDashboardContent = ({ onLogout }: { onLogout?: () => void }) => {
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden font-sans">
       <SearchingOverlay show={showSearchingOverlay} />
-      {viewDriver && <DriverDetailModal driver={viewDriver} onClose={() => setViewDriver(null)} />}
+      {viewDriver && <DriverDetailModal driver={viewDriver} onClose={() => setViewDriver(null)} onRefresh={loadData} />}
       {showAddDriver && <AddDriverModal onClose={() => setShowAddDriver(false)} />}
 
       {/* Occurrence Detail Modal */}
@@ -2952,8 +3023,8 @@ const AdminDashboardContent = ({ onLogout }: { onLogout?: () => void }) => {
 
             {/* Notifications Bell */}
             <div className="flex items-center gap-3">
-              <span className={`px-2 py-1 rounded text-xs font-bold ${isMockMode || !db ? 'bg-yellow-500 text-black' : 'bg-blue-500 text-white'}`} title={isMockMode ? 'Variáveis de ambiente ausentes' : !db ? 'Falha na conexão DB' : 'Conectado ao Firebase'}>
-                {isMockMode ? 'DEMO-ENV' : !db ? 'DEMO-DB' : 'LIVE'}
+              <span className={`px-2 py-1 rounded text-xs font-bold ${isMockMode || !supabase ? 'bg-yellow-500 text-black' : 'bg-blue-500 text-white'}`} title={isMockMode ? 'Variáveis de ambiente ausentes' : !supabase ? 'Falha na conexão DB' : 'Conectado ao Supabase'}>
+                {isMockMode ? 'DEMO-ENV' : !supabase ? 'DEMO-DB' : 'LIVE'}
               </span>
               <div className="relative">
                 <button
@@ -2969,89 +3040,228 @@ const AdminDashboardContent = ({ onLogout }: { onLogout?: () => void }) => {
                 </button>
 
 
-                {/* Notification Dropdown */}
+                {/* Notification Center - Full Drawer */}
                 {showNotifications && (
                   <>
-                    {/* Backdrop to close on click outside */}
+                    {/* Backdrop */}
                     <div
-                      className="fixed inset-0 z-40"
+                      className="fixed inset-0 bg-black/30 backdrop-blur-sm z-40 transition-opacity"
                       onClick={() => setShowNotifications(false)}
                     />
-                    <div className="absolute right-0 top-12 w-96 bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden z-50 animate-slide-up">
-                      <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                        <h3 className="font-bold text-gray-900">Notificações</h3>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setNotifications(notifications.map(n => ({ ...n, read: true }))); }}
-                          className="text-xs text-orange-600 hover:underline"
-                        >
-                          Marcar todas como lidas
-                        </button>
-                      </div>
-                      <div className="max-h-96 overflow-y-auto divide-y divide-gray-100">
-                        {notifications.map(notif => (
-                          <div
-                            key={notif.id}
-                            className={`p-4 hover:bg-gray-50 transition cursor-pointer ${!notif.read ? 'bg-orange-50/50' : ''}`}
-                            onClick={() => {
-                              // Close dropdown
-                              setShowNotifications(false);
-                              // Navigate to appropriate tab based on type
-                              if (notif.type === 'new_driver') {
-                                setActiveTab('drivers');
-                                setFilterStatus('pending');
-                              } else if (notif.type === 'new_company') {
-                                setActiveTab('companies');
-                                // Could auto-select the company if we had a state for it
-                              } else if (notif.type === 'new_user') {
-                                setActiveTab('users');
-                              } else if (notif.type === 'ride_issue' || notif.type === 'payment' || notif.type === 'feedback') {
-                                setActiveTab('occurrences');
-                                setSelectedOccurrence(notif as any);
-                              } else if (notif.type === 'system') {
-                                setActiveTab('settings');
-                              }
-                            }}
-                          >
-                            <div className="flex gap-3">
-                              <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${notif.type === 'new_driver' ? 'bg-blue-100 text-blue-600' :
-                                notif.type === 'ride_issue' ? 'bg-red-100 text-red-600' :
-                                  notif.type === 'payment' ? 'bg-green-100 text-green-600' :
-                                    notif.type === 'feedback' ? 'bg-yellow-100 text-yellow-600' :
-                                      'bg-gray-100 text-gray-600'
-                                }`}>
-                                {notif.type === 'new_driver' && <Users size={18} />}
-                                {notif.type === 'ride_issue' && <AlertTriangle size={18} />}
-                                {notif.type === 'payment' && <DollarSign size={18} />}
-                                {notif.type === 'feedback' && <Star size={18} />}
-                                {notif.type === 'system' && <Settings size={18} />}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-start justify-between gap-2">
-                                  <p className={`text-sm ${!notif.read ? 'font-bold text-gray-900' : 'text-gray-700'}`}>{notif.title}</p>
-                                  <div className="flex items-center gap-1">
-                                    {!notif.read && <span className="w-2 h-2 bg-orange-500 rounded-full flex-shrink-0"></span>}
-                                    <button onClick={(e) => deleteNotification(e, notif.id)} className="text-gray-400 hover:text-red-500 p-1"><Trash2 size={12} /></button>
-                                  </div>
-                                </div>
-                                <p className="text-xs text-gray-500 mt-0.5 truncate">{notif.message}</p>
-                                <p className="text-[10px] text-gray-400 mt-1">
-                                  {Math.floor((Date.now() - notif.time.getTime()) / 60000) < 60
-                                    ? `${Math.floor((Date.now() - notif.time.getTime()) / 60000)} min atrás`
-                                    : `${Math.floor((Date.now() - notif.time.getTime()) / 3600000)} h atrás`
-                                  }
-                                </p>
-                              </div>
-                            </div>
+                    <div className="fixed right-0 top-0 h-screen w-full max-w-md bg-white shadow-2xl z-50 flex flex-col animate-slide-left">
+                      {/* Header */}
+                      <div className="p-5 border-b border-gray-100 bg-gradient-to-r from-gray-900 to-gray-800">
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                              <Bell size={20} className="text-orange-400" />
+                              Central de Notificações
+                            </h2>
+                            <p className="text-xs text-gray-400 mt-0.5">
+                              {notifications.filter(n => !n.read).length} não lida(s) · {notifications.length} total
+                            </p>
                           </div>
-                        ))}
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setNotifications(notifications.map(n => ({ ...n, read: true }))); }}
+                              className="text-xs bg-gray-700 text-gray-300 hover:bg-gray-600 px-3 py-1.5 rounded-lg transition"
+                              title="Marcar todas como lidas"
+                            >
+                              <CheckCircle size={14} className="inline mr-1" />
+                              Todas lidas
+                            </button>
+                            <button
+                              onClick={() => setShowNotifications(false)}
+                              className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition"
+                            >
+                              <X size={20} />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Filter Tabs */}
+                        <div className="flex gap-1 mt-4 overflow-x-auto no-scrollbar">
+                          {[
+                            { key: 'all', label: 'Todos', icon: <Bell size={13} /> },
+                            { key: 'new_driver', label: 'Pilotos', icon: <Bike size={13} /> },
+                            { key: 'new_user', label: 'Passageiros', icon: <Users size={13} /> },
+                            { key: 'new_company', label: 'Empresas', icon: <Building2 size={13} /> },
+                            { key: 'occurrences', label: 'Ocorrências', icon: <AlertCircle size={13} /> },
+                          ].map(tab => {
+                            const count = tab.key === 'all'
+                              ? notifications.filter(n => !n.read).length
+                              : tab.key === 'occurrences'
+                                ? notifications.filter(n => ['ride_issue', 'payment', 'feedback', 'support_request'].includes(n.type) && !n.read).length
+                                : notifications.filter(n => n.type === tab.key && !n.read).length;
+                            return (
+                              <button
+                                key={tab.key}
+                                onClick={() => setNotificationFilter(tab.key)}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition ${notificationFilter === tab.key
+                                  ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/30'
+                                  : 'bg-gray-700/50 text-gray-400 hover:text-white hover:bg-gray-700'
+                                  }`}
+                              >
+                                {tab.icon}
+                                {tab.label}
+                                {count > 0 && (
+                                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${notificationFilter === tab.key ? 'bg-white text-orange-600' : 'bg-red-500 text-white'
+                                    }`}>
+                                    {count}
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
-                      <div className="p-3 border-t border-gray-100 bg-gray-50">
+
+                      {/* Notification List */}
+                      <div className="flex-1 overflow-y-auto">
+                        {(() => {
+                          const filtered = notificationFilter === 'all'
+                            ? notifications
+                            : notificationFilter === 'occurrences'
+                              ? notifications.filter(n => ['ride_issue', 'payment', 'feedback', 'support_request'].includes(n.type))
+                              : notifications.filter(n => n.type === notificationFilter);
+
+                          if (filtered.length === 0) {
+                            return (
+                              <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+                                <Bell size={40} className="mb-3 text-gray-200" />
+                                <p className="font-medium text-gray-500">Nenhuma notificação</p>
+                                <p className="text-xs mt-1">As notificações aparecerão aqui</p>
+                              </div>
+                            );
+                          }
+
+                          // Group by today / earlier
+                          const today = new Date();
+                          today.setHours(0, 0, 0, 0);
+                          const todayNotifs = filtered.filter(n => n.time && n.time >= today);
+                          const earlierNotifs = filtered.filter(n => !n.time || n.time < today);
+
+                          const renderNotif = (notif: any) => {
+                            const typeConfig: Record<string, { bg: string; color: string; icon: React.ReactNode; label: string }> = {
+                              'new_driver': { bg: 'bg-blue-100', color: 'text-blue-600', icon: <Bike size={18} />, label: 'Novo Piloto' },
+                              'new_user': { bg: 'bg-green-100', color: 'text-green-600', icon: <Users size={18} />, label: 'Novo Passageiro' },
+                              'new_company': { bg: 'bg-purple-100', color: 'text-purple-600', icon: <Building2 size={18} />, label: 'Nova Empresa' },
+                              'ride_issue': { bg: 'bg-red-100', color: 'text-red-600', icon: <AlertTriangle size={18} />, label: 'Ocorrência' },
+                              'payment': { bg: 'bg-emerald-100', color: 'text-emerald-600', icon: <DollarSign size={18} />, label: 'Pagamento' },
+                              'feedback': { bg: 'bg-yellow-100', color: 'text-yellow-600', icon: <Star size={18} />, label: 'Feedback' },
+                              'support_request': { bg: 'bg-orange-100', color: 'text-orange-600', icon: <LifeBuoy size={18} />, label: 'Suporte' },
+                              'system': { bg: 'bg-gray-100', color: 'text-gray-600', icon: <Settings size={18} />, label: 'Sistema' },
+                            };
+                            const config = typeConfig[notif.type] || typeConfig['system'];
+
+                            const timeAgo = notif.time ? (() => {
+                              const mins = Math.floor((Date.now() - notif.time.getTime()) / 60000);
+                              if (mins < 1) return 'Agora';
+                              if (mins < 60) return `${mins}min`;
+                              const hours = Math.floor(mins / 60);
+                              if (hours < 24) return `${hours}h`;
+                              const days = Math.floor(hours / 24);
+                              return `${days}d`;
+                            })() : '';
+
+                            return (
+                              <div
+                                key={notif.id}
+                                className={`group flex items-start gap-3 p-4 border-b border-gray-50 cursor-pointer transition-all hover:bg-gray-50 ${!notif.read ? 'bg-orange-50/40 border-l-4 border-l-orange-400' : 'border-l-4 border-l-transparent'
+                                  }`}
+                                onClick={() => {
+                                  // Mark individual as read
+                                  setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, read: true } : n));
+                                  setShowNotifications(false);
+                                  // Navigate
+                                  if (notif.type === 'new_driver') {
+                                    setActiveTab('drivers');
+                                    setFilterStatus('pending');
+                                  } else if (notif.type === 'new_company') {
+                                    setActiveTab('companies');
+                                  } else if (notif.type === 'new_user') {
+                                    setActiveTab('users');
+                                  } else if (['ride_issue', 'payment', 'feedback', 'support_request'].includes(notif.type)) {
+                                    setActiveTab('occurrences');
+                                    setSelectedOccurrence(notif as any);
+                                  } else if (notif.type === 'system') {
+                                    setActiveTab('settings');
+                                  }
+                                }}
+                              >
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${config.bg} ${config.color}`}>
+                                  {config.icon}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-0.5">
+                                    <span className={`text-[10px] font-semibold uppercase tracking-wider ${config.color}`}>{config.label}</span>
+                                    <span className="text-[10px] text-gray-400">{timeAgo}</span>
+                                  </div>
+                                  <p className={`text-sm leading-snug ${!notif.read ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
+                                    {notif.title}
+                                  </p>
+                                  {notif.message && (
+                                    <p className="text-xs text-gray-500 mt-0.5 truncate">{notif.message}</p>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  {!notif.read && <span className="w-2.5 h-2.5 bg-orange-500 rounded-full flex-shrink-0" />}
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); deleteNotification(e, notif.id); }}
+                                    className="p-1 text-gray-300 hover:text-red-500 transition"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          };
+
+                          return (
+                            <>
+                              {todayNotifs.length > 0 && (
+                                <>
+                                  <div className="sticky top-0 px-4 py-2 bg-gray-50 border-b border-gray-100 z-10">
+                                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Hoje</span>
+                                  </div>
+                                  {todayNotifs.map(renderNotif)}
+                                </>
+                              )}
+                              {earlierNotifs.length > 0 && (
+                                <>
+                                  <div className="sticky top-0 px-4 py-2 bg-gray-50 border-b border-gray-100 z-10">
+                                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Anteriores</span>
+                                  </div>
+                                  {earlierNotifs.map(renderNotif)}
+                                </>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
+
+                      {/* Footer */}
+                      <div className="p-3 border-t border-gray-100 bg-gray-50 flex items-center justify-between">
                         <button
                           onClick={() => { setShowNotifications(false); setActiveTab('occurrences'); }}
-                          className="w-full text-center text-sm text-orange-600 hover:underline font-medium"
+                          className="text-sm text-orange-600 hover:text-orange-700 font-medium flex items-center gap-1"
                         >
-                          Ver todas as notificações
+                          <FileText size={14} />
+                          Ver Ocorrências
                         </button>
+                        {notifications.length > 0 && (
+                          <button
+                            onClick={() => {
+                              if (confirm('Limpar todas as notificações?')) {
+                                setNotifications([]);
+                              }
+                            }}
+                            className="text-xs text-gray-400 hover:text-red-500 transition flex items-center gap-1"
+                          >
+                            <Trash2 size={12} />
+                            Limpar tudo
+                          </button>
+                        )}
                       </div>
                     </div>
                   </>
@@ -3411,7 +3621,21 @@ const AdminDashboardContent = ({ onLogout }: { onLogout?: () => void }) => {
                         </div>
                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
                           <button
-                            onClick={(e) => { e.stopPropagation(); setChatDriver(driver); setChatHistory([]); }}
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              setChatDriver(driver);
+                              setChatHistory([]); // Clear previous
+                              // Load real history
+                              const history = await getNotifications(driver.id);
+                              const formattedHistory = history
+                                .sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+                                .map(n => ({
+                                  from: n.title === 'Suporte MotoJá' ? 'admin' : 'driver', // Simple heuristic
+                                  text: n.body,
+                                  time: new Date(n.created_at)
+                                }));
+                              setChatHistory(formattedHistory);
+                            }}
                             className="p-2 rounded-full bg-orange-100 text-orange-600 hover:bg-orange-200"
                             title="Enviar mensagem"
                           >
@@ -3472,26 +3696,38 @@ const AdminDashboardContent = ({ onLogout }: { onLogout?: () => void }) => {
                       type="text"
                       value={chatMessage}
                       onChange={(e) => setChatMessage(e.target.value)}
-                      onKeyPress={(e) => {
-                        if (e.key === 'Enter' && chatMessage.trim()) {
-                          setChatHistory([...chatHistory, { from: 'admin', text: chatMessage.trim(), time: new Date() }]);
+                      onKeyPress={async (e) => {
+                        if (e.key === 'Enter' && chatMessage.trim() && chatDriver) {
+                          const msgText = chatMessage.trim();
+                          // 1. Optimistic Update
+                          setChatHistory([...chatHistory, { from: 'admin', text: msgText, time: new Date() }]);
                           setChatMessage('');
-                          setTimeout(() => {
-                            setChatHistory(prev => [...prev, { from: 'driver', text: 'Mensagem recebida! 👍', time: new Date() }]);
-                          }, 1000);
+
+                          // 2. Send Real Notification
+                          await sendNotification(chatDriver.id, 'newMessage', {
+                            title: 'Suporte MotoJá',
+                            body: msgText,
+                            data: { sender: 'admin' }
+                          });
                         }
                       }}
                       placeholder="Digite uma mensagem..."
                       className="flex-1 p-2 text-sm border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"
                     />
                     <button
-                      onClick={() => {
-                        if (chatMessage.trim()) {
-                          setChatHistory([...chatHistory, { from: 'admin', text: chatMessage.trim(), time: new Date() }]);
+                      onClick={async () => {
+                        if (chatMessage.trim() && chatDriver) {
+                          const msgText = chatMessage.trim();
+                          // 1. Optimistic Update
+                          setChatHistory([...chatHistory, { from: 'admin', text: msgText, time: new Date() }]);
                           setChatMessage('');
-                          setTimeout(() => {
-                            setChatHistory(prev => [...prev, { from: 'driver', text: 'Mensagem recebida! 👍', time: new Date() }]);
-                          }, 1000);
+
+                          // 2. Send Real Notification
+                          await sendNotification(chatDriver.id, 'newMessage', {
+                            title: 'Suporte MotoJá',
+                            body: msgText,
+                            data: { sender: 'admin' }
+                          });
                         }
                       }}
                       className="p-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition"
@@ -3501,6 +3737,139 @@ const AdminDashboardContent = ({ onLogout }: { onLogout?: () => void }) => {
                   </div>
                 </div>
               )}
+            </div>
+          ) : activeTab === 'map' ? (
+            <div className="flex h-[calc(100vh-100px)] -m-6 relative">
+              {/* Map Container */}
+              <div className="flex-1 relative bg-gray-100">
+                <div className="absolute top-4 left-4 z-10 bg-white/90 backdrop-blur p-4 rounded-xl shadow-lg border border-gray-200 w-72">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                    <h3 className="font-bold text-gray-800">Mapa ao Vivo</h3>
+                  </div>
+                  <p className="text-xs text-gray-500 mb-3">Monitorando {filteredDrivers.filter(d => d.status === 'online').length} pilotos online em tempo real.</p>
+                  <div className="flex gap-2 text-[10px] text-gray-400 font-medium">
+                    <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-green-500"></div> Online</span>
+                    <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-orange-500"></div> Ocupado</span>
+                    <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-gray-400"></div> Offline</span>
+                  </div>
+                </div>
+
+                <SimulatedMap
+                  className="w-full h-full"
+                  origin={null}
+                  destination={null}
+                  showDirections={false}
+                  showNearbyDrivers={true}
+                  nearbyDrivers={Object.values(driverLocations).map((d: Driver) => ({
+                    id: d.id,
+                    name: d.name || 'Motorista',
+                    avatar: d.avatar,
+                    location: d.location,
+                    status: d.status,
+                    plate: d.plate,
+                    vehicle: d.vehicle
+                  }))}
+                  onDriverClick={(driver) => setSelectedMapDriver(driver)}
+                  interactive={true}
+                />
+              </div>
+
+              {/* Sidebar - Driver Details */}
+              <div className={`w-96 bg-white border-l border-gray-200 shadow-xl overflow-y-auto transition-all duration-300 absolute right-0 top-0 bottom-0 ${selectedMapDriver ? 'translate-x-0' : 'translate-x-full'}`}>
+                {selectedMapDriver ? (
+                  <div className="p-0 h-full flex flex-col">
+                    <div className="relative h-32 bg-gray-900">
+                      <button onClick={() => setSelectedMapDriver(null)} className="absolute top-4 right-4 bg-black/20 hover:bg-black/40 text-white p-2 rounded-full transition z-10">
+                        <X size={18} />
+                      </button>
+                      <img src={selectedMapDriver.avatar || "https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=400&h=400&fit=crop"} className="w-full h-full object-cover opacity-50" />
+                      <div className="absolute -bottom-10 left-6">
+                        <img src={selectedMapDriver.avatar || "https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=400&h=400&fit=crop"} className="w-20 h-20 rounded-full border-4 border-white shadow-md object-cover bg-white" />
+                      </div>
+                    </div>
+
+                    <div className="mt-12 px-6 pb-6 flex-1 overflow-y-auto">
+                      <div className="flex justify-between items-start mb-1">
+                        <div>
+                          <h2 className="text-xl font-bold text-gray-900">{selectedMapDriver.name}</h2>
+                          <div className="flex items-center gap-1 text-sm text-gray-500">
+                            {selectedMapDriver.status === 'online' ? <span className="text-green-600 font-bold flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-green-500" /> Online</span> : <span className="text-gray-400">Offline</span>}
+                            <span>•</span>
+                            <span>{selectedMapDriver.plate || 'ABC-1234'}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 bg-yellow-50 px-2 py-1 rounded-lg border border-yellow-100 text-yellow-700 font-bold text-sm">
+                          <Star size={14} fill="currentColor" />
+                          <span>5.0</span>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2 mt-4 mb-6">
+                        <Button variant="outline" className="flex-1 text-xs h-9" onClick={async () => {
+                          setChatDriver(selectedMapDriver);
+                          setChatHistory([]); // Reset chat for new driver
+                          // Load real history
+                          const history = await getNotifications(selectedMapDriver.id);
+                          const formattedHistory = history
+                            .sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+                            .map(n => ({
+                              from: n.title === 'Suporte MotoJá' ? 'admin' : 'driver', // Simple heuristic
+                              text: n.body,
+                              time: new Date(n.created_at)
+                            }));
+                          setChatHistory(formattedHistory);
+                        }}>
+                          <MessageSquare size={14} className="mr-2" /> Chat
+                        </Button>
+                        <Button variant="outline" className="flex-1 text-xs h-9">
+                          <Phone size={14} className="mr-2" /> Ligar
+                        </Button>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
+                          <h4 className="font-bold text-gray-700 text-sm mb-3">Estatísticas de Hoje</h4>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <p className="text-xs text-gray-500">Ganhos</p>
+                              <p className="font-bold text-green-600 text-lg">R$ 156,00</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-500">Corridas</p>
+                              <p className="font-bold text-gray-800 text-lg">12</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <h4 className="font-bold text-gray-700 text-sm">Últimas Atividades</h4>
+                          <div className="relative pl-4 border-l-2 border-gray-100 space-y-4">
+                            <div className="relative">
+                              <div className="absolute -left-[21px] top-1 w-3 h-3 rounded-full bg-green-500 border-2 border-white shadow-sm"></div>
+                              <p className="text-xs font-bold text-gray-800">Corrida Finalizada</p>
+                              <p className="text-[10px] text-gray-400">Há 15 minutos • Centro &rarr; Vila Mariana</p>
+                            </div>
+                            <div className="relative">
+                              <div className="absolute -left-[21px] top-1 w-3 h-3 rounded-full bg-blue-500 border-2 border-white shadow-sm"></div>
+                              <p className="text-xs font-bold text-gray-800">Login no App</p>
+                              <p className="text-[10px] text-gray-400">Há 2 horas • GPS Ativo</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center p-8 text-center text-gray-400">
+                    <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
+                      <MapPin size={32} className="text-gray-300" />
+                    </div>
+                    <h3 className="text-gray-900 font-bold mb-1">Nenhum Piloto Selecionado</h3>
+                    <p className="text-sm">Clique em um marcador no mapa para ver detalhes e estatísticas do piloto.</p>
+                  </div>
+                )}
+              </div>
             </div>
           ) : activeTab === 'drivers' ? (
             <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
@@ -3905,6 +4274,201 @@ const AdminDashboardContent = ({ onLogout }: { onLogout?: () => void }) => {
               onSave={handleSaveSettings}
               savingSettings={savingSettings}
             />
+          ) : activeTab === 'settings' ? (
+            <div className="max-w-6xl mx-auto animate-fade-in pb-20">
+              <div className="flex justify-between items-center mb-8">
+                <div>
+                  <h2 className="text-3xl font-bold text-gray-800">Ajustes da Plataforma</h2>
+                  <p className="text-gray-500">Configure identidade visual, dados da empresa e precificação</p>
+                </div>
+                <Button onClick={handleSaveSettings} disabled={savingSettings} className="flex items-center gap-2">
+                  {savingSettings ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle size={18} />}
+                  Salvar Alterações
+                </Button>
+              </div>
+
+              <div className="space-y-8">
+                {/* 1. Visual Customization */}
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                  <div className="flex items-center gap-3 mb-6 border-b border-gray-100 pb-4">
+                    <div className="p-3 bg-purple-100 text-purple-600 rounded-xl">
+                      <Palette size={24} />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-gray-800 text-lg">Personalização Visual</h3>
+                      <p className="text-sm text-gray-500">Aparência do painel administrativo e tela de login.</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    {/* Left Col: Brand Identity */}
+                    <div className="space-y-6">
+                      <div className="space-y-4">
+                        <label className="block text-sm font-medium text-gray-700">Logo da Aplicação</label>
+                        <div className="border border-dashed border-gray-300 rounded-xl p-6 flex flex-col items-center justify-center bg-gray-50 hover:border-orange-500 transition-colors relative group h-40">
+                          <div className="w-full h-20 mb-2 flex items-center justify-center bg-white rounded-lg border border-gray-200 overflow-hidden relative">
+                            <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(#000 1px, transparent 1px)', backgroundSize: '10px 10px' }}></div>
+                            {settings.visual?.appLogoUrl ? (
+                              <img src={settings.visual.appLogoUrl} className="w-full h-full object-contain p-2 relative z-10" alt="App Logo" />
+                            ) : (
+                              <ImageIcon className="text-gray-300" size={32} />
+                            )}
+                          </div>
+                          <p className="text-xs text-center text-gray-500">Clique para alterar (PNG)</p>
+                          <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" onChange={async (e) => {
+                            if (e.target.files?.[0]) {
+                              try {
+                                const url = await uploadFile(e.target.files[0], `app/logo_${Date.now()}`);
+                                setSettings(prev => ({ ...prev, visual: { ...prev.visual, appLogoUrl: url } }));
+                                toast.success('Logo atualizada!');
+                              } catch (e) { toast.error('Erro ao enviar logo'); }
+                            }
+                          }} />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Cor Principal</label>
+                          <div className="flex gap-2 items-center">
+                            <input type="color" value={settings.visual?.primaryColor || '#f97316'} onChange={(e) => setSettings({ ...settings, visual: { ...settings.visual, primaryColor: e.target.value } })} className="w-10 h-10 rounded-lg cursor-pointer border-0 p-0 shadow-sm" />
+                            <Input value={settings.visual?.primaryColor || '#f97316'} onChange={(e: any) => setSettings({ ...settings, visual: { ...settings.visual, primaryColor: e.target.value } })} className="flex-1" />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Nome do App</label>
+                          <Input value={settings.appName} onChange={(e: any) => setSettings({ ...settings, appName: e.target.value })} placeholder="MotoJá" />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right Col: Login Screen Config */}
+                    <div className="space-y-4">
+                      <h4 className="font-bold text-gray-700 text-sm uppercase">Tela de Login</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <label className="text-xs text-gray-500">Fundo (Desktop)</label>
+                          <div className="aspect-video bg-gray-100 rounded-lg border border-gray-200 relative overflow-hidden group cursor-pointer">
+                            {settings.visual?.loginBackgroundImage ? (
+                              <img src={settings.visual.loginBackgroundImage} className="w-full h-full object-cover" />
+                            ) : (<div className="w-full h-full flex items-center justify-center text-gray-400"><ImageIcon size={20} /></div>)}
+                            <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition text-white text-xs font-bold">Alterar</div>
+                            <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" onChange={async (e) => {
+                              if (e.target.files?.[0]) {
+                                try {
+                                  const url = await uploadFile(e.target.files[0], `app/login_bg_${Date.now()}`);
+                                  setSettings(prev => ({ ...prev, visual: { ...prev.visual, loginBackgroundImage: url } }));
+                                } catch { toast.error('Erro no upload'); }
+                              }
+                            }} />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs text-gray-500">Fundo (Mobile)</label>
+                          <div className="aspect-[9/16] w-20 mx-auto bg-gray-100 rounded-lg border border-gray-200 relative overflow-hidden group cursor-pointer">
+                            {settings.visual?.mobileBackgroundImage ? (
+                              <img src={settings.visual.mobileBackgroundImage} className="w-full h-full object-cover" />
+                            ) : (<div className="w-full h-full flex items-center justify-center text-gray-400"><Smartphone size={20} /></div>)}
+                            <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition text-white text-[10px] font-bold text-center p-1">Alterar</div>
+                            <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept="image/*" onChange={async (e) => {
+                              if (e.target.files?.[0]) {
+                                try {
+                                  const url = await uploadFile(e.target.files[0], `app/mobile_bg_${Date.now()}`);
+                                  setSettings(prev => ({ ...prev, visual: { ...prev.visual, mobileBackgroundImage: url } }));
+                                } catch { toast.error('Erro no upload'); }
+                              }
+                            }} />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="space-y-3">
+                        <Input label="Título Login" value={settings.visual?.loginTitle || ''} onChange={(e: any) => setSettings({ ...settings, visual: { ...settings.visual, loginTitle: e.target.value } })} placeholder="Bem-vindo" />
+                        <Input label="Subtítulo Login" value={settings.visual?.loginSubtitle || ''} onChange={(e: any) => setSettings({ ...settings, visual: { ...settings.visual, loginSubtitle: e.target.value } })} placeholder="Acesse sua conta" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Company Information */}
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                  <div className="flex items-center gap-3 mb-6 border-b border-gray-100 pb-4">
+                    <div className="p-3 bg-blue-100 text-blue-600 rounded-xl">
+                      <Building2 size={24} />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-gray-800 text-lg">Dados da Empresa</h3>
+                      <p className="text-sm text-gray-500">Informações legais e de contato para suporte.</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <Input label="Razão Social" value={settings.companyName} onChange={(e: any) => setSettings({ ...settings, companyName: e.target.value })} placeholder="Empresa LTDA" />
+                    <Input label="CNPJ" value={settings.companyCnpj} onChange={(e: any) => setSettings({ ...settings, companyCnpj: e.target.value })} placeholder="00.000.000/0000-00" maxLength={18} />
+                    <Input label="Endereço Completo" value={settings.companyAddress} onChange={(e: any) => setSettings({ ...settings, companyAddress: e.target.value })} className="md:col-span-2" />
+                    <div className="grid grid-cols-3 gap-4 md:col-span-2">
+                      <Input label="Cidade" value={settings.companyCity} onChange={(e: any) => setSettings({ ...settings, companyCity: e.target.value })} className="col-span-1" />
+                      <Input label="Estado" value={settings.companyState} onChange={(e: any) => setSettings({ ...settings, companyState: e.target.value })} className="col-span-1" />
+                      <Input label="CEP" value={settings.companyCep} onChange={(e: any) => setSettings({ ...settings, companyCep: e.target.value })} className="col-span-1" />
+                    </div>
+                    <Input label="Email de Suporte" value={settings.supportEmail} onChange={(e: any) => setSettings({ ...settings, supportEmail: e.target.value })} />
+                    <Input label="Telefone / WhatsApp" value={settings.supportPhone} onChange={(e: any) => setSettings({ ...settings, supportPhone: e.target.value })} />
+                  </div>
+                </div>
+
+                {/* 3. Pricing Configuration */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {/* Moto (Standard) */}
+                  <Card className="p-5 border-t-4 border-t-orange-500">
+                    <div className="flex items-center gap-2 mb-4">
+                      <Bike className="text-orange-600" />
+                      <h3 className="font-bold text-gray-800">Mototaxi</h3>
+                    </div>
+                    <div className="space-y-3">
+                      <Input label="Preço Base (R$)" type="number" value={settings.basePrice} onChange={(e: any) => setSettings({ ...settings, basePrice: parseFloat(e.target.value) })} />
+                      <Input label="Preço / KM (R$)" type="number" value={settings.pricePerKm} onChange={(e: any) => setSettings({ ...settings, pricePerKm: parseFloat(e.target.value) })} />
+                      <Input label="Taxa Plataforma (%)" type="number" value={settings.platformFee} onChange={(e: any) => setSettings({ ...settings, platformFee: parseFloat(e.target.value) })} />
+                      <div className="p-3 bg-gray-50 rounded text-xs text-gray-500 mt-2">
+                        <p>Simulação 5km:</p>
+                        <p className="font-bold text-gray-800">R$ {(settings.basePrice + (settings.pricePerKm * 5)).toFixed(2)}</p>
+                      </div>
+                    </div>
+                  </Card>
+
+                  {/* Bike (Eco) */}
+                  <Card className="p-5 border-t-4 border-t-green-500">
+                    <div className="flex items-center gap-2 mb-4">
+                      <Leaf className="text-green-600" />
+                      <h3 className="font-bold text-gray-800">Bicicleta / Eco</h3>
+                    </div>
+                    <div className="space-y-3">
+                      <Input label="Preço Base (R$)" type="number" value={settings.bikeBasePrice} onChange={(e: any) => setSettings({ ...settings, bikeBasePrice: parseFloat(e.target.value) })} />
+                      <Input label="Preço / KM (R$)" type="number" value={settings.bikePricePerKm} onChange={(e: any) => setSettings({ ...settings, bikePricePerKm: parseFloat(e.target.value) })} />
+                      <Input label="Distância Máx (KM)" type="number" value={settings.bikeMaxDistance} onChange={(e: any) => setSettings({ ...settings, bikeMaxDistance: parseFloat(e.target.value) })} />
+                      <div className="p-3 bg-gray-50 rounded text-xs text-gray-500 mt-2">
+                        <p>Simulação 3km:</p>
+                        <p className="font-bold text-gray-800">R$ {(settings.bikeBasePrice + (settings.bikePricePerKm * 3)).toFixed(2)}</p>
+                      </div>
+                    </div>
+                  </Card>
+
+                  {/* Delivery */}
+                  <Card className="p-5 border-t-4 border-t-blue-500">
+                    <div className="flex items-center gap-2 mb-4">
+                      <Package className="text-blue-600" />
+                      <h3 className="font-bold text-gray-800">Entregas</h3>
+                    </div>
+                    <div className="space-y-3">
+                      <Input label="Preço Base (R$)" type="number" value={settings.deliveryMotoBasePrice} onChange={(e: any) => setSettings({ ...settings, deliveryMotoBasePrice: parseFloat(e.target.value) })} />
+                      <Input label="Preço / KM (R$)" type="number" value={settings.deliveryMotoPricePerKm} onChange={(e: any) => setSettings({ ...settings, deliveryMotoPricePerKm: parseFloat(e.target.value) })} />
+                      <div className="p-3 bg-gray-50 rounded text-xs text-gray-500 mt-2">
+                        <p>Simulação 8km:</p>
+                        <p className="font-bold text-gray-800">R$ {(settings.deliveryMotoBasePrice + (settings.deliveryMotoPricePerKm * 8)).toFixed(2)}</p>
+                      </div>
+                    </div>
+                  </Card>
+                </div>
+
+              </div>
+            </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-gray-400">
               <Users size={64} className="mb-4 text-gray-200" />
@@ -3916,7 +4480,7 @@ const AdminDashboardContent = ({ onLogout }: { onLogout?: () => void }) => {
       </div >
 
       {showCompanyModal && <CompanyFormModal company={editingCompany} onClose={() => setShowCompanyModal(false)} onSave={handleSaveCompany} onDelete={handleDeleteCompany} onNotify={handleNotify} />}
-      {viewDriver && <DriverDetailModal driver={viewDriver} rides={safeData.recentRides} onClose={() => setViewDriver(null)} />}
+      {viewDriver && <DriverDetailModal driver={viewDriver} rides={safeData.recentRides} onClose={() => setViewDriver(null)} onRefresh={loadData} />}
       {viewUser && <UserDetailModal user={viewUser} rides={safeData.recentRides} onClose={() => setViewUser(null)} />}
       {showAddDriver && <AddDriverModal onClose={() => setShowAddDriver(false)} />}
 

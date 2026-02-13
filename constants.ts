@@ -39,7 +39,8 @@ export const APP_CONFIG = {
   currency: "R$",
   primaryColor: "orange",
   googleMapsApiKey: googleKey,
-  mapboxToken: mapboxKey
+  mapboxToken: mapboxKey,
+  logoUrl: '/icon-192.png'
 };
 
 export const MOCK_USER: User = {
@@ -47,7 +48,9 @@ export const MOCK_USER: User = {
   name: 'João Silva',
   phone: '(14) 99999-9999',
   rating: 4.8,
-  avatar: 'https://picsum.photos/100/100?random=1'
+  avatar: 'https://picsum.photos/100/100?random=1',
+  totalRides: 0,
+  type: 'passenger'
 };
 
 export const MOCK_DRIVER: Driver = {

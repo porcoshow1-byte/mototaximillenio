@@ -42,6 +42,8 @@ interface MapProps {
   isLoading?: boolean;
   initialCenter?: Coords;
   layoutTrigger?: any; // Change in this prop triggers map resize
+  navigationMode?: boolean; // Waze-like turn-by-turn navigation view
+  onMapReady?: () => void; // Callback when map API is fully loaded
 }
 
 const mapContainerStyle = {
@@ -65,14 +67,18 @@ const MapboxMapInner: React.FC<MapProps> = (props) => {
     showDriver, showRoute, origin, destination, driverLocation, drivers, waypoints,
     recenterTrigger, onCameraChange, fitBoundsPadding,
     originAddress, destinationAddress, tripProfile,
-    onEditOrigin, onEditDestination, layoutTrigger
+    onEditOrigin, onEditDestination, layoutTrigger, navigationMode
   } = props;
   const mapRef = useRef<MapRef>(null);
   const [routeGeoJSON, setRouteGeoJSON] = useState<any>(null);
+  const prevDriverLocRef = useRef<Coords | null>(null);
+  const [driverBearing, setDriverBearing] = useState(0);
   const [viewState, setViewState] = useState({
     longitude: props.initialCenter?.lng || defaultCenter.lng,
     latitude: props.initialCenter?.lat || defaultCenter.lat,
-    zoom: 14
+    zoom: navigationMode ? 17.5 : 14,
+    pitch: navigationMode ? 60 : 0,
+    bearing: 0
   });
 
   const mapboxToken = APP_CONFIG.mapboxToken;
@@ -107,6 +113,8 @@ const MapboxMapInner: React.FC<MapProps> = (props) => {
   // Helper function to fit bounds - READS FROM REF
   const fitBounds = useCallback((mapInstance: any) => {
     if (!mapInstance) return;
+    // Skip fitBounds in navigation mode - we follow the driver directly
+    if (propsRef.current.navigationMode) return;
 
     const { origin, destination, driverLocation, showDriver, waypoints } = propsRef.current;
 
@@ -192,7 +200,41 @@ const MapboxMapInner: React.FC<MapProps> = (props) => {
     if (mapRef.current) {
       fitBounds(mapRef.current);
     }
-  }, [recenterTrigger, showRoute, fitBounds, driverLocation]); // Added driverLocation to auto-follow
+  }, [recenterTrigger, showRoute, fitBounds, navigationMode ? null : driverLocation]); // Don't re-fit on driverLocation in nav mode
+
+  // Navigation Mode: Follow driver with bearing and pitch
+  useEffect(() => {
+    if (!navigationMode || !driverLocation || !mapRef.current) return;
+
+    // Calculate bearing from previous location
+    const prev = prevDriverLocRef.current;
+    if (prev && (prev.lat !== driverLocation.lat || prev.lng !== driverLocation.lng)) {
+      const dLng = driverLocation.lng - prev.lng;
+      const dLat = driverLocation.lat - prev.lat;
+      const bearing = Math.atan2(dLng, dLat) * (180 / Math.PI);
+      setDriverBearing(bearing);
+
+      mapRef.current.flyTo({
+        center: [driverLocation.lng, driverLocation.lat],
+        zoom: 17.5,
+        pitch: 60,
+        bearing: bearing,
+        duration: 1000,
+        essential: true
+      });
+    } else {
+      // First update - just center
+      mapRef.current.flyTo({
+        center: [driverLocation.lng, driverLocation.lat],
+        zoom: 17.5,
+        pitch: 60,
+        duration: 500,
+        essential: true
+      });
+    }
+
+    prevDriverLocRef.current = driverLocation;
+  }, [navigationMode, driverLocation]);
 
   // Handle Layout Changes (Sidebar Toggle) using ResizeObserver for smooth real-time updates
   useEffect(() => {
@@ -372,25 +414,66 @@ const MapboxMapInner: React.FC<MapProps> = (props) => {
 
       {showDriver && driverLocation && !drivers && (
         <MapboxMarker longitude={driverLocation.lng} latitude={driverLocation.lat}>
-          {/* Enhanced Driver Marker with Motorcycle Icon */}
-          <div
-            className="relative flex items-center justify-center"
-            style={{ transition: 'transform 1s ease-out' }}
-          >
-            {/* Outer Pulse */}
-            <div className="absolute w-12 h-12 bg-green-400/30 rounded-full animate-ping" />
-            {/* Main Circle */}
-            <div className="w-10 h-10 bg-green-500 rounded-full border-[3px] border-white shadow-xl flex items-center justify-center z-10">
-              <FaMotorcycle size={18} color="white" />
+          {navigationMode ? (
+            /* Navigation Mode: Arrow/Chevron Marker */
+            <div
+              className="flex items-center justify-center"
+              style={{
+                transform: `rotate(${driverBearing}deg)`,
+                transition: 'transform 0.8s ease-out'
+              }}
+            >
+              <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                <circle cx="24" cy="24" r="22" fill="#3B82F6" stroke="white" strokeWidth="3" />
+                <path d="M24 10 L34 32 L24 26 L14 32 Z" fill="white" />
+              </svg>
             </div>
-          </div>
+          ) : (
+            /* Normal Mode: Motorcycle Icon */
+            <div
+              className="relative flex items-center justify-center"
+              style={{ transition: 'transform 1s ease-out' }}
+            >
+              {/* Outer Pulse */}
+              <div className="absolute w-12 h-12 bg-green-400/30 rounded-full animate-ping" />
+              {/* Main Circle */}
+              <div className="w-10 h-10 bg-green-500 rounded-full border-[3px] border-white shadow-xl flex items-center justify-center z-10">
+                <FaMotorcycle size={18} color="white" />
+              </div>
+            </div>
+          )}
         </MapboxMarker>
       )}
 
       {drivers && drivers.map(d => (
         d.location && (
           <MapboxMarker key={d.id} longitude={d.location.lng} latitude={d.location.lat}>
-            <div className="bg-green-600 w-3 h-3 rounded-full border border-white shadow-sm"></div>
+            <div
+              className="relative flex items-center justify-center cursor-pointer group"
+              onClick={(e) => {
+                e.originalEvent?.stopPropagation();
+                // If there is an onDriverClick prop, we could use it here
+                // For now, let the parent handle interaction via the overlay list
+              }}
+            >
+              {/* Status Pulse */}
+              {d.status === 'online' && (
+                <div className="absolute w-8 h-8 bg-green-500/30 rounded-full animate-ping"></div>
+              )}
+
+              {/* Icon Container */}
+              <div className={`w-8 h-8 rounded-full border-2 border-white shadow-md flex items-center justify-center z-10 transition-transform hover:scale-110 text-white ${d.status === 'online' ? 'bg-green-500' :
+                d.status === 'busy' ? 'bg-orange-500' :
+                  'bg-gray-500'
+                }`}>
+                <FaMotorcycle size={14} />
+              </div>
+
+              {/* Tooltip on Hover */}
+              <div className="absolute bottom-full mb-2 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap bg-gray-900 text-white text-xs px-2 py-1 rounded pointer-events-none z-20">
+                {d.name} • {d.status === 'online' ? 'Online' : d.status === 'busy' ? 'Ocupado' : 'Offline'}
+              </div>
+            </div>
           </MapboxMarker>
         )
       ))}
@@ -733,10 +816,10 @@ const GoogleMapInner: React.FC<MapProps> = ({ showDriver, showRoute, status, ori
           position={animatedDriverLocation}
           icon={{
             path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-            scale: 6,
-            fillColor: "#16a34a",
+            scale: 7,
+            fillColor: "#22c55e", // Green-500
             fillOpacity: 1,
-            strokeWeight: 1,
+            strokeWeight: 2,
             strokeColor: "#ffffff",
             rotation: driverRotation
           }}
@@ -800,6 +883,13 @@ export const SimulatedMap: React.FC<MapProps> = (props) => {
     libraries: libraries
   });
 
+  // Notify parent when API is loaded
+  useEffect(() => {
+    if (isLoaded && props.onMapReady) {
+      props.onMapReady();
+    }
+  }, [isLoaded, props.onMapReady]);
+
   // 0. Loading State (Prevents Avaré Jump)
   if (props.isLoading) {
     return (
@@ -818,8 +908,9 @@ export const SimulatedMap: React.FC<MapProps> = (props) => {
 
         {/* Status Badge */}
         {props.status && (
-          <div className="absolute top-12 left-4 right-4 z-10" style={{ pointerEvents: 'none' }}>
-            <div className="bg-white/90 backdrop-blur-md px-4 py-2 rounded-lg shadow-sm border-l-4 border-orange-500 text-sm font-medium text-gray-800 inline-block pointer-events-auto">
+          <div className="absolute top-24 left-0 right-0 z-10 flex justify-center pointer-events-none">
+            <div className="bg-white/90 backdrop-blur-md px-4 py-2 rounded-full shadow-lg border border-orange-100 text-sm font-bold text-gray-800 pointer-events-auto flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></div>
               {props.status}
             </div>
           </div>
@@ -839,8 +930,9 @@ export const SimulatedMap: React.FC<MapProps> = (props) => {
         <GoogleMapInner {...props} />
 
         {props.status && (
-          <div className="absolute top-12 left-4 right-4 z-[400]" style={{ pointerEvents: 'none' }}>
-            <div className="bg-white/90 backdrop-blur-md px-4 py-2 rounded-lg shadow-sm border-l-4 border-orange-500 text-sm font-medium text-gray-800 inline-block pointer-events-auto">
+          <div className="absolute top-24 left-0 right-0 z-[400] flex justify-center pointer-events-none">
+            <div className="bg-white/90 backdrop-blur-md px-4 py-2 rounded-full shadow-lg border border-orange-100 text-sm font-bold text-gray-800 pointer-events-auto flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></div>
               {props.status}
             </div>
           </div>

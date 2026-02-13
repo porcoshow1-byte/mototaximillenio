@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Send, User } from 'lucide-react';
-import { subscribeToChat, sendMessage } from '../services/chat';
+import { X, Send, User, Check, CheckCheck } from 'lucide-react';
+import { subscribeToChat, sendMessage, markMessageAsRead } from '../services/chat';
 import { ChatMessage } from '../types';
 import { Button } from './UI';
 import { playSound } from '../services/audio';
@@ -20,7 +20,14 @@ export const ChatModal = ({ rideId, currentUserId, otherUserName, onClose }: Cha
 
   useEffect(() => {
     const unsubscribe = subscribeToChat(rideId, (msgs) => {
-      // Tocar som se recebeu nova mensagem de outro usuário
+      // Logic to mark unread messages from the other user as read
+      msgs.forEach(msg => {
+        if (msg.senderId !== currentUserId && msg.status !== 'read') {
+          markMessageAsRead(rideId, msg.id);
+        }
+      });
+
+      // Play sound if new message received from other user
       if (msgs.length > prevMessageCountRef.current) {
         const lastMsg = msgs[msgs.length - 1];
         if (lastMsg && lastMsg.senderId !== currentUserId) {
@@ -40,8 +47,15 @@ export const ChatModal = ({ rideId, currentUserId, otherUserName, onClose }: Cha
   const handleSend = async () => {
     if (!newMessage.trim()) return;
     const text = newMessage;
-    setNewMessage(''); // Limpa input imediatamente para UX
+    setNewMessage(''); // Clear input immediately for UX
     await sendMessage(rideId, currentUserId, text);
+  };
+
+  const renderStatusIcon = (status?: 'sent' | 'delivered' | 'read') => {
+    if (!status || status === 'sent') return <Check size={12} className="text-gray-300" />;
+    if (status === 'delivered') return <CheckCheck size={12} className="text-gray-300" />;
+    if (status === 'read') return <CheckCheck size={12} className="text-blue-200" />; // Blue ticks for read (on orange bg)
+    return null;
   };
 
   return (
@@ -76,14 +90,17 @@ export const ChatModal = ({ rideId, currentUserId, otherUserName, onClose }: Cha
               <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                 <div
                   className={`max-w-[80%] p-3 rounded-2xl text-sm shadow-sm ${isMe
-                      ? 'bg-orange-500 text-white rounded-tr-none'
-                      : 'bg-white text-gray-800 border border-gray-100 rounded-tl-none'
+                    ? 'bg-orange-500 text-white rounded-tr-none'
+                    : 'bg-white text-gray-800 border border-gray-100 rounded-tl-none'
                     }`}
                 >
-                  {msg.text}
-                  <p className={`text-[10px] mt-1 text-right ${isMe ? 'text-orange-100' : 'text-gray-400'}`}>
-                    {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </p>
+                  <p>{msg.text}</p>
+                  <div className={`flex items-center justify-end gap-1 mt-1 ${isMe ? 'opacity-80' : 'opacity-50'}`}>
+                    <span className={`text-[10px] ${isMe ? 'text-orange-100' : 'text-gray-400'}`}>
+                      {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    {isMe && renderStatusIcon(msg.status)}
+                  </div>
                 </div>
               </div>
             );
