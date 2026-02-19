@@ -410,10 +410,14 @@ export const subscribeToPendingRides = (
   };
 
   const fetchAndFilter = async () => {
+    // Server-side filter: Only fetch rides created in the last 5 minutes
+    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+
     const { data } = await supabase
       .from(RIDES_TABLE)
       .select('*')
       .eq('status', 'pending')
+      .gte('created_at', fiveMinAgo)
       .order('created_at', { ascending: false })
       .limit(50);
 
@@ -437,8 +441,8 @@ export const subscribeToPendingRides = (
           return false;
         }
 
-        // Stale Check: Ignore rides created more than 20 minutes ago
-        const STALE_THRESHOLD_MS = 20 * 60 * 1000;
+        // Stale Check: Ignore rides created more than 5 minutes ago
+        const STALE_THRESHOLD_MS = 5 * 60 * 1000;
         if (Date.now() - r.createdAt > STALE_THRESHOLD_MS) {
           return false;
         }
