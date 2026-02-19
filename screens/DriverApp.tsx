@@ -10,7 +10,7 @@ import { RideHistoryModal } from '../components/RideHistoryModal';
 import { SwipeableButton } from '../components/SwipeableButton';
 import { APP_CONFIG } from '../constants';
 import { useAuth } from '../context/AuthContext';
-import { subscribeToPendingRides, acceptRide, startRide, completeRide, getRideHistory, subscribeToRide, updateDriverLocation, cancelRide } from '../services/ride';
+import { subscribeToPendingRides, acceptRide, startRide, completeRide, getRideHistory, subscribeToRide, updateDriverLocation, cancelRide, getCurrentDriverRide } from '../services/ride';
 import { createSupportTicket } from '../services/support';
 import { logout } from '../services/auth';
 import { getOrCreateUserProfile, updateUserProfile, registerSession, validateSession, clearSession } from '../services/user';
@@ -114,6 +114,19 @@ export const DriverApp = () => {
     loadDriverProfile();
     registerServiceWorker(); // Ensure SW is registered
     ensureNotificationPermission();
+
+    // Restore Active Ride (Persistence)
+    if (authUser?.uid) {
+      getCurrentDriverRide(authUser.uid).then((ride) => {
+        if (ride) {
+          setActiveRide(ride);
+          // If ride is in progress, enable navigation mode automatically
+          if (ride.status === 'in_progress') {
+            setIsNavigating(true);
+          }
+        }
+      });
+    }
   }, [authUser]);
 
   // Real-time listener for verification status changes (approval/rejection)

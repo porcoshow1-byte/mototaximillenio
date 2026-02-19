@@ -678,3 +678,27 @@ export const updateDriverLocation = async (rideId: string, location: Coords) => 
 
   return { error };
 };
+
+// Helper: Get Current Active Ride for Driver (Persistence)
+export const getCurrentDriverRide = async (driverId: string): Promise<RideRequest | null> => {
+  if (isMockMode || !supabase) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from(RIDES_TABLE)
+      .select('*')
+      .eq('driver_id', driverId)
+      .in('status', ['accepted', 'in_progress'])
+      .maybeSingle();
+
+    if (error) {
+      console.error("Error fetching current driver ride:", error);
+      return null;
+    }
+
+    return data ? mapToAppRide(data) : null;
+  } catch (err) {
+    console.error("Unexpected error fetching driver ride:", err);
+    return null;
+  }
+};
