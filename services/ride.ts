@@ -318,75 +318,65 @@ export const subscribeToRide = (rideId: string, onUpdate: (ride: RideRequest) =>
     return () => clearInterval(interval);
   }
 
+  // Local cache for broadcast merging
+  let latestRide: RideRequest | null = null;
+
+  const emitUpdate = (ride: RideRequest) => {
+    latestRide = ride;
+    console.log('[subscribeToRide] Emitting update, status:', ride.status, 'driver:', ride.driver?.name || 'none');
+    onUpdate(ride);
+  };
+
   // 1. Initial Fetch
   supabase
     .from(RIDES_TABLE)
     .select('*')
     .eq('id', rideId)
     .single()
-    .then(({ data }) => {
-      if (data) onUpdate(mapToAppRide(data));
+    .then(({ data, error }) => {
+      if (error) {
+        console.error('[subscribeToRide] Initial fetch error:', error);
+        return;
+      }
+      if (data) {
+        console.log('[subscribeToRide] Initial fetch, status:', data.status);
+        emitUpdate(mapToAppRide(data));
+      }
     });
 
-  // 2. Realtime Listener (Changes + Location Broadcast)
+  // 2. Realtime Listener — ALL listeners BEFORE .subscribe()
   const channel = supabase
-    .channel(`ride_${rideId}`)
+    .channel(`ride_track_${rideId}`)
     .on(
       'postgres_changes',
       { event: 'UPDATE', schema: 'public', table: RIDES_TABLE, filter: `id=eq.${rideId}` },
       (payload) => {
-        onUpdate(mapToAppRide(payload.new));
+        console.log('[subscribeToRide] Realtime UPDATE received, new status:', payload.new?.status);
+        emitUpdate(mapToAppRide(payload.new));
       }
     )
     .on(
       'broadcast',
       { event: 'location' },
       ({ payload }) => {
-        // Payload should be { lat, lng }
-        // We need to merge this into the current ride state.
-        // But onUpdate replaces the state.
-        // We can't easily "merge" without current state.
-        // Workaround: We fetch current state? No too slow.
-        // We rely on the App to handle "partial" updates? No interface says RideRequest.
-        // We can attach it to a temporary property or simply re-emit the last known ride with new location.
-        // PROBLEM: We don't have "last known ride" here in this scope easily unless we store it.
-        // Let's store it locally in this closure.
+        if (latestRide && latestRide.driver) {
+          const updatedRide = {
+            ...latestRide,
+            driver: {
+              ...latestRide.driver,
+              location: payload
+            }
+          };
+          emitUpdate(updatedRide);
+        }
       }
     )
-    .subscribe();
-
-  // Handle local caching for broadcast merging
-  // We need to fetch the data anyway.
-  // Actually, for the "broadcast" part, usually the MAP component listens to it.
-  // But the requirement implies `subscribeToRide` handles everything.
-  // Let's implement a small cache here.
-  let latestRide: RideRequest | null = null;
-
-  // Intercept the onUpdate to cache
-  const originalOnUpdate = onUpdate;
-  const wrappedOnUpdate = (ride: RideRequest) => {
-    latestRide = ride;
-    originalOnUpdate(ride);
-  };
-
-  // Re-bind the channel listener to use wrapped
-  // (We need to re-define channel logic slightly to use latestRide)
-
-  // Refined Channel Logic:
-  channel.on('broadcast', { event: 'location' }, ({ payload }) => {
-    if (latestRide && latestRide.driver) {
-      const updatedRide = {
-        ...latestRide,
-        driver: {
-          ...latestRide.driver,
-          location: payload // { lat, lng }
-        }
-      };
-      wrappedOnUpdate(updatedRide); // Emits updated ride with new location
-    }
-  });
+    .subscribe((status) => {
+      console.log('[subscribeToRide] Channel status:', status);
+    });
 
   return () => {
+    console.log('[subscribeToRide] Unsubscribing from channel');
     channel.unsubscribe();
   };
 };

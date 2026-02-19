@@ -964,20 +964,25 @@ export const UserApp = () => {
     }
 
     // Single Realtime Subscription (source of truth)
+    console.log('[UserApp] Setting up ride subscription for:', currentRideId);
     const unsubscribe = subscribeToRide(currentRideId, (updatedRide) => {
       const prevStatus = prevRideStatusRef.current;
       const newStatus = updatedRide.status;
+
+      console.log('[UserApp] Ride callback fired. prev:', prevStatus, '→ new:', newStatus);
 
       setCurrentRide(updatedRide);
       setRideStatus(newStatus);
 
       // Tocar sons e mostrar notificações baseado na mudança de status
       if (prevStatus !== newStatus) {
+        console.log('[UserApp] STATUS CHANGED! Transitioning from', prevStatus, 'to', newStatus);
         if (newStatus === 'accepted' && prevStatus !== 'accepted') {
           playSound('rideAccepted');
           showNotification('rideAccepted', {
             driverName: updatedRide.driver?.name
           });
+          console.log('[UserApp] → Setting step to RIDE');
           setStep('ride');
           setRideStatus('Seu piloto está a caminho!');
         } else if (newStatus === 'in_progress' && prevStatus !== 'in_progress') {
@@ -1012,19 +1017,20 @@ export const UserApp = () => {
         const { supabase } = await import('../services/supabase');
         if (supabase) {
           const { data } = await supabase.from('rides').select('*').eq('id', currentRideId).single();
+          console.log('[UserApp Polling] DB status:', data?.status, '| local ref:', prevRideStatusRef.current);
           if (data && data.status !== prevRideStatusRef.current) {
-            console.log('Polling Sync: Status changed to', data.status);
+            console.log('[UserApp Polling] STATUS MISMATCH DETECTED! DB:', data.status, 'vs Local:', prevRideStatusRef.current);
             const { mapToAppRide } = await import('../services/ride');
             const updated = mapToAppRide(data);
             // Re-trigger the same logic via state update
             setCurrentRide(updated);
+            setRideStatus(updated.status);
             const newStatus = updated.status;
-            if (prevRideStatusRef.current !== newStatus) {
-              if ((newStatus === 'accepted' || newStatus === 'in_progress')) {
-                setStep('ride');
-              }
-              prevRideStatusRef.current = newStatus;
+            if ((newStatus === 'accepted' || newStatus === 'in_progress')) {
+              console.log('[UserApp Polling] → FORCING step to RIDE');
+              setStep('ride');
             }
+            prevRideStatusRef.current = newStatus;
           }
         }
       } catch (e) { console.warn('Polling error', e); }
