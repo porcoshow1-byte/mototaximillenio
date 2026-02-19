@@ -509,15 +509,60 @@ export const acceptRide = async (rideId: string, driver: Driver) => {
     return;
   }
 
-  // We need to update status, driver (json), driver_id, accepted_at
-  const updateData = {
-    status: 'accepted',
-    driver: driver,
-    driver_id: driver.id,
-    accepted_at: new Date().toISOString()
+  // Sanitize driver object for JSONB storage (remove live location to avoid serialization issues)
+  const driverForDb = {
+    id: driver.id,
+    name: driver.name,
+    vehicle: driver.vehicle,
+    plate: driver.plate,
+    rating: driver.rating,
+    avatar: driver.avatar,
+    phone: driver.phone,
+    status: driver.status,
+    location: driver.location ? { lat: driver.location.lat, lng: driver.location.lng } : null,
   };
 
-  await supabase.from(RIDES_TABLE).update(updateData).eq('id', rideId);
+  // Try full update first
+  const updateData: any = {
+    status: 'accepted',
+    driver: driverForDb,
+  };
+
+  console.log('[acceptRide] Updating ride', rideId, 'with data:', JSON.stringify(updateData));
+
+  const { error } = await supabase.from(RIDES_TABLE).update(updateData).eq('id', rideId);
+
+  if (error) {
+    console.error('[acceptRide] FULL update failed:', error.message, error.details, error.hint);
+
+    // Fallback: Try updating ONLY the status and driver JSON
+    const { error: fallbackError } = await supabase
+      .from(RIDES_TABLE)
+      .update({ status: 'accepted', driver: driverForDb })
+      .eq('id', rideId);
+
+    if (fallbackError) {
+      console.error('[acceptRide] FALLBACK also failed:', fallbackError.message);
+
+      // Last resort: Just update status
+      const { error: lastResortError } = await supabase
+        .from(RIDES_TABLE)
+        .update({ status: 'accepted' })
+        .eq('id', rideId);
+
+      if (lastResortError) {
+        console.error('[acceptRide] LAST RESORT (status only) FAILED:', lastResortError.message);
+        throw lastResortError;
+      } else {
+        console.log('[acceptRide] Status-only update succeeded');
+      }
+    } else {
+      console.log('[acceptRide] Fallback update succeeded');
+    }
+  } else {
+    console.log('[acceptRide] Full update succeeded');
+  }
+
   triggerN8NWebhook('ride_accepted', { rideId, driver });
 };
 
@@ -597,15 +642,35 @@ export const rejectRide = async (rideId: string, driverId: string) => {
 export const updateDriverLocation = async (rideId: string, location: Coords) => {
   // Validate params to prevent PATCH 400
   if (!rideId || !location || typeof location.lat !== 'number' || typeof location.lng !== 'number') {
-    // console.warn("Invalid key params for updateDriverLocation", { rideId, location });
     return { error: { message: "Invalid params" } };
   }
 
-  // Simple DB Update
+  if (!supabase) return { error: { message: "No supabase" } };
+
+  // Fetch current driver JSON, update location, write back
+  const { data: ride, error: fetchError } = await supabase
+    .from(RIDES_TABLE)
+    .select('driver')
+    .eq('id', rideId)
+    .single();
+
+  if (fetchError || !ride?.driver) {
+    return { error: fetchError || { message: "No driver on ride" } };
+  }
+
+  const updatedDriver = {
+    ...ride.driver,
+    location: { lat: location.lat, lng: location.lng }
+  };
+
   const { error } = await supabase
     .from(RIDES_TABLE)
-    .update({ driver_location: location })
+    .update({ driver: updatedDriver })
     .eq('id', rideId);
+
+  if (error) {
+    console.error('[updateDriverLocation] Error:', error.message);
+  }
 
   return { error };
 };
